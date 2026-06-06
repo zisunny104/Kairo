@@ -1,0 +1,100 @@
+/* ================================================
+   共用：檔案 / 日誌列表卡片基礎模式
+   board  → .record-item / .file-card-actions
+   archive → .archive-file-card / .file-card-actions
+   ================================================ */
+
+/* ── 卡片容器 ── */
+.record-item,
+.archive-file-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: #ffffff;
+    border: 2px solid #e0e0e0;
+    border-radius: 6px;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.record-item:hover,
+.archive-file-card:hover {
+    border-color: #667eea;
+    background: #fafbff;
+}
+
+/* ── 卡片詳情區：點擊開啟 ── */
+.record-details,
+.archive-file-info {
+    cursor: pointer;
+}
+
+/* ── 共用核取方塊 ── */
+.record-checkbox input[type="checkbox"],
+.archive-file-checkbox {
+    accent-color: #667eea;
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+/* ── 卡片動作按鈕群組 ── */
+.file-card-actions {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+/* ── 單個動作按鈕 ── */
+.file-card-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    background: #667eea;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    color: white;
+    flex-shrink: 0;
+    transition: background 0.12s, box-shadow 0.12s;
+}
+
+.file-card-btn svg {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+
+.file-card-btn:hover {
+    background: #5a6fd6;
+    box-shadow: 0 2px 6px rgba(102, 126, 234, 0.4);
+}
+
+.file-card-btn--success {
+    background: #388e3c;
+}
+.file-card-btn--success:hover {
+    background: #2e7d32;
+    box-shadow: 0 2px 6px rgba(56, 142, 60, 0.4);
+}
+
+.file-card-btn--danger {
+    background: #e53935;
+}
+.file-card-btn--danger:hover {
+    background: #c62828;
+    box-shadow: 0 2px 6px rgba(229, 57, 53, 0.4);
+}
+
+.file-card-btn--upload {
+    background: #0288d1;
+}
+.file-card-btn--upload:hover {
+    background: #0277bd;
+    box-shadow: 0 2px 6px rgba(2, 136, 209, 0.4);
+}

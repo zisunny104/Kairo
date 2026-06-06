@@ -167,32 +167,41 @@ class RecordView {
       <div class="records-section-header">
         <h2>實驗日誌列表</h2>
         <div class="records-list-header">
+          <div class="records-search-wrap" id="recordSearchWrap">
+            <button id="recordSearchToggleBtn" class="btn-secondary" data-action="toggle-search" title="搜尋" aria-label="搜尋">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="icon-sm">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+            </button>
+            <input type="text" id="recordSearchInput" class="records-search-input" placeholder="搜尋檔案名稱…" aria-label="搜尋檔案名稱">
+          </div>
           <button id="refreshRecordsBtn" class="btn-secondary" data-action="refresh-records" title="重新整理" aria-label="重新整理">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" class="icon-sm">
-              <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
-              <path d="M21 3v5h-5"></path>
-              <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path>
-              <path d="M3 21v-5h5"></path>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="icon-sm">
+              <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+              <path d="M21 3v5h-5"/>
+              <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+              <path d="M3 21v-5h5"/>
             </svg>
           </button>
           <button id="recordFilterToggleBtn" class="btn-secondary" data-action="toggle-filter" title="篩選" aria-label="篩選">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" class="icon-sm">
-              <path d="M3 4h18"></path><path d="M6 10h12"></path><path d="M10 16h4"></path>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="icon-sm">
+              <path d="M3 4h18"/><path d="M6 10h12"/><path d="M10 16h4"/>
             </svg>
           </button>
+          <span id="recordsBatchCount" class="records-batch-count is-hidden"></span>
           <button id="downloadSelectedRecordsBtn" class="btn-secondary is-hidden" data-action="download-selected" title="下載選取" aria-label="下載選取">
-            <svg class="svg-icon svg-md" viewBox="0 0 24 24">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="7,10 12,15 17,10"></polyline>
-              <line x1="12" y1="15" x2="12" y2="3"></line>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="icon-sm">
+              <path d="M3 17v2a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2"/>
+              <polyline points="8 12 12 16 16 12"/>
+              <line x1="12" y1="3" x2="12" y2="16"/>
             </svg>
           </button>
           <button id="deleteSelectedRecordsBtn" class="btn-danger is-hidden" data-action="delete-selected" title="刪除選取" aria-label="刪除選取">
-            <svg class="svg-icon svg-md" viewBox="0 0 24 24">
-              <polyline points="3,6 5,6 21,6"></polyline>
-              <path d="M19,6v14a2,2 0 0,1-2,2H7a2,2 0 0,1-2-2V6m3,0V4a2,2 0 0,1,2-2h4a2,2 0 0,1,2,2v2"></path>
-              <line x1="10" y1="11" x2="10" y2="17"></line>
-              <line x1="14" y1="11" x2="14" y2="17"></line>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="icon-sm">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+              <path d="M10 11v6M14 11v6"/>
+              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
             </svg>
           </button>
         </div>
@@ -476,6 +485,7 @@ class RecordView {
           this._hasRequestedInitialLoad = true;
           this.requestRecordListRefresh({ immediate: true, reason: "manual_refresh" });
           break;
+        case "toggle-search": this.toggleRecordSearch(); break;
         case "toggle-filter": this.toggleRecordFilter(); break;
         case "download-selected": this.downloadSelectedRecords(); break;
         case "delete-selected": this.deleteSelectedRecords(); break;
@@ -493,7 +503,29 @@ class RecordView {
       if (checkbox) this.toggleRecordSelection(checkbox.dataset.recordId);
     });
 
+    const searchInput = document.getElementById("recordSearchInput");
+    if (searchInput) {
+      searchInput.addEventListener("input", (e) => {
+        this._recordSearch = e.target.value;
+        this.displayRecordList(this._allRecords || this.currentRecords || []);
+      });
+    }
+
     this._recordListActionsBound = true;
+  }
+
+  toggleRecordSearch() {
+    const wrap = document.getElementById("recordSearchWrap");
+    const input = document.getElementById("recordSearchInput");
+    if (!wrap) return;
+    const isOpen = wrap.classList.toggle("is-open");
+    if (isOpen) {
+      input?.focus();
+    } else {
+      if (input) input.value = "";
+      this._recordSearch = "";
+      this.displayRecordList(this._allRecords || this.currentRecords || []);
+    }
   }
 
   // ─── 日誌列表載入 ──────────────────────────────────────────────────────────

@@ -1384,16 +1384,8 @@
     }
 }
 
-/* 中等螢幕（600px - 900px） */
-@media (min-width: 600px) {
-    .sync-panel-content {
-        width: 85%;
-        max-width: 550px;
-    }
-}
-
-/* 大螢幕（900px 以上） */
-@media (min-width: 900px) {
+/* 非手機螢幕（769px 以上：平板、桌機、電視） */
+@media (min-width: 769px) {
     .sync-panel-content {
         width: 80%;
         max-width: 600px;

@@ -51,7 +51,7 @@ panel/
 
 ## 開發者
 
-謝祥紫 Xiang-zi Xie(@zisunny104)、GitHub Copilot
+謝祥紫 Xiang-zi Xie(@zisunny104)、GitHub Copilot、Claude Code
 
 ## 更新日誌
 

@@ -1,26 +1,6 @@
 /* ===== Board 頁面響應式樣式 ===== */
 
 /* 實驗面板響應式 */
-@media (max-width: 1280px) {
-    .experiment-panel {
-        max-width: 90vw;
-    }
-}
-
-@media (max-width: 1024px) {
-    .experiment-panel {
-        max-width: 95vw;
-    }
-
-    .experiment-panel-defaults {
-        min-height: auto;
-    }
-
-    .experiment-panel-actions {
-        flex-wrap: wrap;
-    }
-}
-
 @media (max-width: 768px) {
     .experiment-panel {
         max-width: 100vw;
@@ -28,10 +8,12 @@
     }
 
     .experiment-panel-defaults {
+        min-height: auto;
         padding: 12px;
     }
 
     .experiment-panel-actions {
+        flex-wrap: wrap;
         gap: 6px;
         padding: 12px;
     }

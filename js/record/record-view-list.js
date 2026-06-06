@@ -87,33 +87,27 @@ export const recordViewList = {
           <input type="checkbox" id="record-${safeRecordFile}" data-record-id="${safeRecordFile}">
           <label for="record-${safeRecordFile}"></label>
         </div>
-        <div class="record-details">
+        <div class="record-details" data-action="view-record" data-record-id="${safeRecordFile}">
           <div class="record-filename">${safeFilename}</div>
           <div class="record-meta">
             <span class="record-size">${record.logCount} 條記錄</span>
             ${recordDate ? `<span class="record-date">${recordDate}</span>` : ""}
           </div>
         </div>
-        <div class="record-actions">
-          <button class="btn btn-info btn-icon-only" data-action="view-record" data-record-id="${safeRecordFile}" title="檢視">
-            <svg class="icon-view" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-              <circle cx="12" cy="12" r="3"></circle>
+        <div class="file-card-actions">
+          <button class="file-card-btn" data-action="download-record" data-record-id="${safeRecordFile}" title="下載">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 17v2a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2"></path>
+              <polyline points="8 12 12 16 16 12"></polyline>
+              <line x1="12" y1="3" x2="12" y2="16"></line>
             </svg>
           </button>
-          <button class="btn btn-primary btn-icon-only" data-action="download-record" data-record-id="${safeRecordFile}" title="下載">
-            <svg class="icon-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M3 17V19C3 20.1046 3.89543 21 5 21H19C20.1046 21 21 20.1046 21 19V17"></path>
-              <path d="M8 12L12 16L16 12"></path>
-              <path d="M12 3V16"></path>
-            </svg>
-          </button>
-          <button class="btn btn-danger btn-icon-only" data-action="delete-record" data-record-id="${safeRecordFile}" title="刪除">
-            <svg class="icon-delete" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="3,6 5,6 21,6"></polyline>
-              <path d="m19,6v14a2,2 0 0,1-2,2H7a2,2 0 0,1-2-2V6m3,0V4a2,2 0 0,1,2-2h4a2,2 0 0,1,2,2v2"></path>
-              <line x1="10" y1="11" x2="10" y2="17"></line>
-              <line x1="14" y1="11" x2="14" y2="17"></line>
+          <button class="file-card-btn file-card-btn--danger" data-action="delete-record" data-record-id="${safeRecordFile}" title="刪除">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+              <path d="M10 11v6M14 11v6"></path>
+              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
             </svg>
           </button>
         </div>
@@ -135,11 +129,16 @@ export const recordViewList = {
     const count = this.selectedRecords.size;
     const deleteBtn = document.getElementById("deleteSelectedRecordsBtn");
     const downloadBtn = document.getElementById("downloadSelectedRecordsBtn");
+    const batchCount = document.getElementById("recordsBatchCount");
     if (deleteBtn) {
       deleteBtn.classList.toggle("is-hidden", count === 0);
       deleteBtn.title = count > 0 ? `刪除選取項目 (${count})` : "刪除選取項目";
       deleteBtn.setAttribute("aria-label", deleteBtn.title);
     }
     if (downloadBtn) downloadBtn.classList.toggle("is-hidden", count === 0);
+    if (batchCount) {
+      batchCount.classList.toggle("is-hidden", count === 0);
+      batchCount.textContent = `${count} 項已選`;
+    }
   },
 };

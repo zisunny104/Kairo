@@ -7,6 +7,9 @@
 @import url('./base/scrollbar.css');
 @import url('./base/layout.css');
 
+/* ===== 共用模式 ===== */
+@import url('./shared/file-list.css');
+
 /* ===== 元件 ===== */
 @import url('./components/buttons.css');
 @import url('./components/forms.css');

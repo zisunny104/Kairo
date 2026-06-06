@@ -10,6 +10,7 @@ import {
   API_ENDPOINTS,
 } from "../constants/index.js";
 import { TimeSyncManager } from "../core/time-sync-manager.js";
+import { SyncManager } from "../sync/sync-manager.js";
 
 // ── 共用 SVG 圖示 ─────────────────────────────────────────────────────────────
 const ICON = {
@@ -332,13 +333,14 @@ class ArchivePageManager {
 
   async initialize() {
     this._api = getApiUrl();
+    this._syncManager = new SyncManager();
     this._setupPanelToggle();
     this._setupUpload();
     await Promise.all([
       this._loadRefData(),
       this._loadServerFiles(),
     ]);
-    Logger.info("[Archive] 初始化完成");
+    Logger.debug("[Archive] 初始化完成");
   }
 
   _setupPanelToggle() {
@@ -388,7 +390,7 @@ class ArchivePageManager {
           }
         }
       }
-      Logger.info("[Archive] 參考資料載入完成");
+      Logger.debug("[Archive] 參考資料載入完成");
     } catch (err) {
       Logger.warn("[Archive] 參考資料載入失敗:", err.message);
     }
@@ -441,20 +443,58 @@ class ArchivePageManager {
     const list = document.getElementById("serverFilesList");
     if (!list) return;
 
-    // 確保篩選輸入框存在（只建一次）
-    let filterInput = document.getElementById("serverFileFilter");
-    if (!filterInput) {
+    // 搜尋輸入框（只建一次）
+    if (!document.getElementById("serverFileFilter")) {
       const wrap = document.createElement("div");
       wrap.className = "archive-file-filter-wrap";
+      wrap.id = "serverFileFilterWrap";
       wrap.innerHTML = `<input type="text" id="serverFileFilter" class="archive-file-filter" placeholder="搜尋檔案名稱…">`;
       list.parentNode.insertBefore(wrap, list);
-      filterInput = document.getElementById("serverFileFilter");
-      filterInput.addEventListener("input", () => {
-        this._fileFilter = filterInput.value.toLowerCase();
+      document.getElementById("serverFileFilter").addEventListener("input", e => {
+        this._fileFilter = e.target.value.toLowerCase();
         this._renderServerFileItems();
       });
     }
-    filterInput.value = this._fileFilter;
+
+    // 批次操作列（只建一次）
+    if (!document.getElementById("serverBatchBar")) {
+      const bar = document.createElement("div");
+      bar.id = "serverBatchBar";
+      bar.className = "archive-batch-bar is-hidden";
+      list.parentNode.insertBefore(bar, list);
+    }
+
+    // 搜尋按鈕 toggle（只綁一次）
+    if (!this._serverSearchBound) {
+      document.getElementById("serverSearchToggleBtn")?.addEventListener("click", () => {
+        const wrap = document.getElementById("serverFileFilterWrap");
+        const input = document.getElementById("serverFileFilter");
+        if (!wrap) return;
+        const isOpen = wrap.classList.toggle("is-open");
+        if (isOpen) input?.focus();
+        else {
+          input.value = "";
+          this._fileFilter = "";
+          this._renderServerFileItems();
+        }
+      });
+      this._serverSearchBound = true;
+    }
+
+    // 事件委派（只建一次）
+    if (!this._serverListBound) {
+      list.addEventListener("click", e => {
+        const btn = e.target.closest("[data-card-action]");
+        if (!btn) return;
+        e.stopPropagation();
+        const filename = btn.dataset.filename;
+        if (btn.dataset.cardAction === "download") this._downloadServerFile(filename);
+        else if (btn.dataset.cardAction === "delete")  this._deleteServerFile(filename);
+      });
+      this._serverListBound = true;
+    }
+
+    document.getElementById("serverFileFilter").value = this._fileFilter;
     this._renderServerFileItems();
   }
 
@@ -471,30 +511,46 @@ class ArchivePageManager {
     }
     const activeId = this._file?.id || "";
     list.innerHTML = files.map(f => {
-      const kb  = (f.size / 1024).toFixed(1);
-      const dt  = this._tsm.formatDateTime(f.modified, { includeTime: false });
+      const kb     = (f.size / 1024).toFixed(1);
+      const dt     = this._tsm.formatDateTime(f.modified, { includeTime: false });
       const id     = `server:${f.filename}`;
       const safeId = escapeHtml(id);
+      const safeFn = escapeHtml(f.filename);
       const sel    = this._selectedFiles.has(id);
       const active = activeId === id;
       return `<div class="archive-file-card${active ? " is-active" : ""}${sel ? " is-selected" : ""}" data-file-id="${safeId}">
         <input type="checkbox" class="archive-file-checkbox" data-file-id="${safeId}" ${sel ? "checked" : ""}>
-        <div class="archive-file-info" data-filename="${escapeHtml(f.filename)}">
-          <span class="archive-file-name">${escapeHtml(f.filename)}</span>
+        <div class="archive-file-info" data-filename="${safeFn}">
+          <span class="archive-file-name">${safeFn}</span>
           <span class="archive-file-meta">${dt} · ${kb} KB</span>
+        </div>
+        <div class="file-card-actions">
+          <button class="file-card-btn" data-card-action="download" data-filename="${safeFn}" title="下載">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 17v2a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2"/><polyline points="8 12 12 16 16 12"/><line x1="12" y1="3" x2="12" y2="16"/>
+            </svg>
+          </button>
+          <button class="file-card-btn file-card-btn--danger" data-card-action="delete" data-filename="${safeFn}" title="刪除">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+            </svg>
+          </button>
         </div>
       </div>`;
     }).join("");
 
+    // 點擊檔案資訊區 = 開啟
     list.querySelectorAll(".archive-file-info").forEach(info =>
       info.addEventListener("click", () => this._openServer(info.dataset.filename))
     );
+    // checkbox 選取
     list.querySelectorAll(".archive-file-checkbox").forEach(cb =>
       cb.addEventListener("change", () => {
         const id = cb.dataset.fileId;
         if (cb.checked) this._selectedFiles.add(id);
         else this._selectedFiles.delete(id);
         cb.closest(".archive-file-card")?.classList.toggle("is-selected", cb.checked);
+        this._updateServerBatchBar();
       })
     );
   }
@@ -573,6 +629,18 @@ class ArchivePageManager {
             <span class="archive-file-name">${escapeHtml(f.name)}</span>
             <span class="archive-file-meta">本機</span>
           </div>
+          <div class="file-card-actions">
+            <button class="file-card-btn file-card-btn--upload" data-local-action="upload" data-file-id="${safeId}" title="上傳至伺服器">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 17v2a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>
+              </svg>
+            </button>
+            <button class="file-card-btn file-card-btn--danger" data-local-action="remove" data-file-id="${safeId}" title="從清單移除">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
         </div>`;
       }).join("");
 
@@ -597,6 +665,14 @@ class ArchivePageManager {
         cb.closest(".archive-file-card")?.classList.toggle("is-selected", cb.checked);
       })
     );
+    ctn.querySelectorAll("[data-local-action]").forEach(btn =>
+      btn.addEventListener("click", e => {
+        e.stopPropagation();
+        const id = btn.dataset.fileId;
+        if (btn.dataset.localAction === "upload") this._uploadLocalFileById(id);
+        else if (btn.dataset.localAction === "remove") this._removeLocalFile(id);
+      })
+    );
   }
 
   _restoreDraft(state) {
@@ -606,6 +682,109 @@ class ArchivePageManager {
     state.history = draft.history;
     state.isDirty = true;
     Logger.info(`[Archive] 還原草稿：${draft.history.length} 筆編輯 (${state.title})`);
+  }
+
+  // ── 卡片動作 ──────────────────────────────────────────────────────────────
+
+  _downloadServerFile(filename) {
+    const url = `${this._api}${API_ENDPOINTS.RECORD.READ(filename)}`;
+    fetch(url).then(r => r.json()).then(data => {
+      if (!data.success) { Logger.error("[Archive] 下載失敗:", data.error); return; }
+      const blob = new Blob([data.content], { type: "application/x-jsonlines" });
+      const a = Object.assign(document.createElement("a"), {
+        href: URL.createObjectURL(blob), download: filename,
+      });
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    }).catch(err => Logger.error("[Archive] 下載失敗:", err.message));
+  }
+
+  async _deleteServerFile(filename) {
+    if (!confirm(`確定要從伺服器刪除「${filename}」嗎？此操作無法復原。`)) return;
+    try {
+      const res  = await fetch(`${this._api}${API_ENDPOINTS.RECORD.DELETE(filename)}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "刪除失敗");
+      // 若目前開著的就是被刪除的檔案，清空檢視區
+      if (this._file?.title === filename) this._file = null;
+      await this._loadServerFiles();
+    } catch (err) {
+      Logger.error("[Archive] 刪除失敗:", err.message);
+      alert(`刪除失敗：${err.message}`);
+    }
+  }
+
+  async _uploadLocalFileById(id) {
+    const f = this._localFiles.get(id);
+    if (!f) return;
+    const state = { title: f.name, source: "local", toEditedJsonl: () => f.content };
+    const btn = document.querySelector(`[data-local-action="upload"][data-file-id="${CSS.escape(id)}"]`);
+    if (btn) { btn.disabled = true; }
+    try {
+      const res = await fetch(`${this._api}${API_ENDPOINTS.RECORD.SAVE}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename: state.title, content: state.toEditedJsonl() }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "上傳失敗");
+      await this._loadServerFiles();
+    } catch (err) {
+      Logger.error("[Archive] 上傳失敗:", err.message);
+      alert(`上傳失敗：${err.message}`);
+    } finally {
+      if (btn) { btn.disabled = false; }
+    }
+  }
+
+  _removeLocalFile(id) {
+    this._localFiles.delete(id);
+    this._selectedFiles.delete(id);
+    if (this._file?.id === id) this._file = null;
+    this._renderLocalList();
+  }
+
+  _updateServerBatchBar() {
+    const bar = document.getElementById("serverBatchBar");
+    if (!bar) return;
+    const serverSelected = [...this._selectedFiles].filter(id => id.startsWith("server:"));
+    if (serverSelected.length === 0) { bar.classList.add("is-hidden"); return; }
+    bar.classList.remove("is-hidden");
+    bar.innerHTML = `
+      <span class="archive-batch-count">${serverSelected.length} 項已選</span>
+      <button class="archive-batch-btn archive-batch-btn--success" id="batchDownloadBtn">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 17v2a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2"/><polyline points="8 12 12 16 16 12"/><line x1="12" y1="3" x2="12" y2="16"/>
+        </svg>全部下載
+      </button>
+      <button class="archive-batch-btn archive-batch-btn--danger" id="batchDeleteBtn">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/>
+        </svg>批次刪除
+      </button>`;
+
+    bar.querySelector("#batchDownloadBtn")?.addEventListener("click", () => {
+      serverSelected.forEach(id => this._downloadServerFile(id.replace(/^server:/, "")));
+    });
+    bar.querySelector("#batchDeleteBtn")?.addEventListener("click", async () => {
+      const names = serverSelected.map(id => id.replace(/^server:/, ""));
+      if (!confirm(`確定要刪除這 ${names.length} 個檔案嗎？\n${names.join("\n")}`)) return;
+      for (const name of names) await this._deleteServerFile_silent(name);
+      this._selectedFiles.clear();
+      await this._loadServerFiles();
+    });
+  }
+
+  async _deleteServerFile_silent(filename) {
+    try {
+      const res  = await fetch(`${this._api}${API_ENDPOINTS.RECORD.DELETE(filename)}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      if (this._file?.title === filename) this._file = null;
+    } catch (err) {
+      Logger.error(`[Archive] 刪除 ${filename} 失敗:`, err.message);
+    }
   }
 
   // ── 上傳至伺服器 ──────────────────────────────────────────────────────────
@@ -755,15 +934,19 @@ class ArchivePageManager {
       ? `<span class="archive-filter-note">（篩選：${filtered.length} 筆）</span>` : "";
 
     const undoCount = f.history.length;
-    const expandBtn = f.viewMode === "timeline"
+    const isTimeline = f.viewMode === "timeline";
+    const expandBtn = isTimeline
       ? `<button class="archive-count-btn" data-action="toggle-expand">${ICON.chevronDown} 展開全部</button>` : "";
+    const masterCheck = isTimeline
+      ? `<input type="checkbox" id="timelineSelectAll" class="archive-select-all" title="全選／全不選">` : "";
     const countBar = `<div class="archive-count-bar">
+      ${masterCheck}
       <span class="archive-entries-count">共 ${f.entries.length} 筆記錄${editInfo}${filterNote}</span>
       <div class="archive-filter-row">
         ${expandBtn}
         <button class="archive-count-btn" data-action="undo" ${undoCount === 0 ? "disabled" : ""}>還原${undoCount > 0 ? ` (${undoCount})` : ""}</button>
         <button class="archive-count-btn archive-count-btn--danger" data-action="revert" ${!f.isDirty ? "disabled" : ""}>重設</button>
-        <label class="archive-filter-label" for="entryTypeFilter">篩選</label>
+        <span class="archive-toolbar-sep"></span>
         <select class="archive-filter-select" id="entryTypeFilter">${typeOptions}</select>
       </div>
     </div>`;
@@ -846,12 +1029,32 @@ class ArchivePageManager {
       this._renderAll();
     });
 
+    // 時間軸全選
+    viewer.querySelector("#timelineSelectAll")?.addEventListener("change", e => {
+      const checked = e.target.checked;
+      viewer.querySelectorAll(".archive-tl-check").forEach(cb => { cb.checked = checked; });
+    });
+
+    // 時間軸個別勾選 → 更新全選狀態
+    viewer.addEventListener("change", e => {
+      if (!e.target.classList.contains("archive-tl-check")) return;
+      const all = [...viewer.querySelectorAll(".archive-tl-check")];
+      const master = viewer.querySelector("#timelineSelectAll");
+      if (!master) return;
+      const n = all.filter(c => c.checked).length;
+      master.checked = n === all.length;
+      master.indeterminate = n > 0 && n < all.length;
+    });
+
     // 摘要互動
     this._bindSummaryEvents(viewer, this._file);
 
     // 步驟收折
     viewer.querySelectorAll(".archive-step-header[data-step-key]").forEach(hdr =>
-      hdr.addEventListener("click", () => this._toggleStep(hdr.dataset.stepKey))
+      hdr.addEventListener("click", e => {
+        if (e.target.classList.contains("archive-tl-check")) return;
+        this._toggleStep(hdr.dataset.stepKey);
+      })
     );
 
     // 時間戳彈出框
@@ -1921,6 +2124,7 @@ class ArchivePageManager {
         <div class="archive-tl-dot" style="background:${color.border}"></div>
         <div class="archive-top-card" style="border-color:${color.border}">
           <div class="archive-top-card-header">
+            <input type="checkbox" class="archive-tl-check" data-tl-id="${entry._idx ?? ""}">
             <span class="archive-top-badge" style="background:${color.bg};color:${color.text}">${escapeHtml(label)}</span>
             <span class="archive-top-time">${relTime(entry.ts)}</span>
           </div>
@@ -1947,6 +2151,7 @@ class ArchivePageManager {
       <div class="archive-tl-dot" style="background:${mainColor.border}"></div>
       <div class="archive-top-card" style="border-color:${mainColor.border}">
         <div class="archive-top-card-header">
+          <input type="checkbox" class="archive-tl-check" data-tl-id="m-${events[0].ts ?? ""}">
           <span class="archive-top-time">${relTime(events[0].ts)}</span>
           <span class="archive-merged-count">${events.length} 筆同時</span>
         </div>
@@ -2013,6 +2218,7 @@ class ArchivePageManager {
       <div class="archive-tl-dot" style="background:${cs.border};width:12px;height:12px;top:14px;left:-24px"></div>
       <div class="archive-step-card" data-step-key="${escapeHtml(key)}" style="border-color:${cs.border}">
         <div class="archive-step-header" data-step-key="${escapeHtml(key)}" style="background:${cs.bg}">
+          <input type="checkbox" class="archive-tl-check" data-tl-id="step-${escapeHtml(key)}">
           <span class="archive-step-num" style="background:${cs.accent}">${stepNum}</span>
           <div class="archive-step-label">
             <span class="archive-step-name">${escapeHtml(mainLabel)}</span>

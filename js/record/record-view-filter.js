@@ -77,6 +77,11 @@ export const recordViewFilter = {
       this.timeFilter.min = this.timeFilter.minAvailable;
       this.timeFilter.max = this.timeFilter.maxAvailable;
     }
+    this._recordSearch = "";
+    const searchInput = document.getElementById("recordSearchInput");
+    const searchWrap = document.getElementById("recordSearchWrap");
+    if (searchInput) searchInput.value = "";
+    if (searchWrap) searchWrap.classList.remove("is-open");
     this._updateRecordFilterBounds(this._allRecords || []);
     this._closeRecordFilter();
     if (this._allRecords) this.displayRecordList(this._allRecords);
@@ -99,6 +104,7 @@ export const recordViewFilter = {
     const timeMax = this.timeFilter?.max ?? timeMaxAvailable;
 
     return (
+      (this._recordSearch && this._recordSearch.trim().length > 0) ||
       min > 0 || (maxAvailable > 0 && max < maxAvailable) ||
       durationMin > 0 || (durationMax > 0 && durationMaxValue < durationMax) ||
       (timeMinAvailable !== null && timeMaxAvailable !== null &&
@@ -122,11 +128,15 @@ export const recordViewFilter = {
     const timeMin = this.timeFilter?.min ?? (this.timeFilter?.minAvailable ?? Number.MIN_SAFE_INTEGER);
     const timeMax = this.timeFilter?.max ?? (this.timeFilter?.maxAvailable ?? Number.MAX_SAFE_INTEGER);
 
+    const search = (this._recordSearch || "").toLowerCase().trim();
+
     return experiments.filter((exp) => {
       const count = Number(exp?.logCount || 0);
       const duration = this._getExperimentDurationSeconds(exp);
       const time = this._getExperimentStartTimeMs(exp);
-      return count >= countMin && count <= countMax &&
+      const filename = (exp?.filename || "").toLowerCase();
+      return (!search || filename.includes(search)) &&
+        count >= countMin && count <= countMax &&
         duration >= durationMin && duration <= durationMax &&
         time >= timeMin && time <= timeMax;
     });
@@ -305,6 +315,8 @@ export const recordViewFilter = {
    */
   _buildRecordFilterSummaryText(filteredCount, totalCount) {
     const parts = [];
+    const search = (this._recordSearch || "").trim();
+    if (search) parts.push(`關鍵字「${search}」`);
     if (this.recordCountFilter?.min > 0 ||
         (this.recordCountFilter?.maxAvailable > 0 && this.recordCountFilter?.max < this.recordCountFilter?.maxAvailable)) {
       parts.push(`記錄數 ${this.recordCountFilter.min}~${this.recordCountFilter.max}`);
