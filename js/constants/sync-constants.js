@@ -69,6 +69,7 @@ export function addSyncStatusText(key, text) {
 export const SYNC_PAGE_CONFIG = {
   PANEL: "panel",
   BOARD: "board",
+  ARCHIVE: "archive",
 };
 
 // 頁面顯示資訊（名稱 + 路徑）
@@ -80,6 +81,10 @@ export const SYNC_PAGE_LIST = {
   board: {
     name: "實驗管理",
     path: "board.html",
+  },
+  archive: {
+    name: "檔案管理",
+    path: "archive.html",
   },
 };
 

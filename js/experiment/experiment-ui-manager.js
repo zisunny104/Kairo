@@ -95,7 +95,7 @@ class ExperimentUIManager extends ExperimentUIRenderer {
    * @private
    */
   _setupStateInputSync() {
-    document.addEventListener(SYNC_EVENTS.EXPERIMENT_STATE_ID_CHANGED, (e) => {
+    this._onStateIdChanged = (e) => {
       const { experimentId } = e.detail || {};
       if (experimentId == null) return;
       const safeExperimentId = typeof experimentId === "string" ? experimentId : "";
@@ -103,9 +103,8 @@ class ExperimentUIManager extends ExperimentUIRenderer {
       if (input && input.value.trim() !== safeExperimentId) {
         input.value = safeExperimentId;
       }
-    });
-
-    document.addEventListener(SYNC_EVENTS.EXPERIMENT_STATE_PARTICIPANT_CHANGED, (e) => {
+    };
+    this._onParticipantChanged = (e) => {
       const { participantName } = e.detail || {};
       if (participantName == null) return;
       const safeName = typeof participantName === "string" ? participantName : "";
@@ -113,7 +112,9 @@ class ExperimentUIManager extends ExperimentUIRenderer {
       if (input && input.value.trim() !== safeName) {
         input.value = safeName;
       }
-    });
+    };
+    document.addEventListener(SYNC_EVENTS.EXPERIMENT_STATE_ID_CHANGED, this._onStateIdChanged);
+    document.addEventListener(SYNC_EVENTS.EXPERIMENT_STATE_PARTICIPANT_CHANGED, this._onParticipantChanged);
   }
 
   // ==========================================
@@ -230,6 +231,14 @@ class ExperimentUIManager extends ExperimentUIRenderer {
       handlers.forEach((handler) => this.off(eventName, handler));
     });
     this.listeners.clear();
+    if (this._onStateIdChanged) {
+      document.removeEventListener(SYNC_EVENTS.EXPERIMENT_STATE_ID_CHANGED, this._onStateIdChanged);
+      this._onStateIdChanged = null;
+    }
+    if (this._onParticipantChanged) {
+      document.removeEventListener(SYNC_EVENTS.EXPERIMENT_STATE_PARTICIPANT_CHANGED, this._onParticipantChanged);
+      this._onParticipantChanged = null;
+    }
     this.elements.clear();
     this.reset();
     this.dependencies.flowManager = null;

@@ -241,10 +241,28 @@ class RecordView {
    * @param {Array} logs - 完整日誌陣列
    */
   updateLiveDisplay(logs) {
+    this._currentLogs = logs;
+
+    // 節流：每 100ms 最多重繪一次，避免高頻 _addLog 在主執行緒上累積大量 DOM 操作
+    const now = Date.now();
+    if (this._liveDisplayLastRender && now - this._liveDisplayLastRender < 100) {
+      if (!this._liveDisplayThrottleTimer) {
+        this._liveDisplayThrottleTimer = setTimeout(() => {
+          this._liveDisplayThrottleTimer = null;
+          this._renderLiveDisplay();
+        }, 100);
+      }
+      return;
+    }
+    this._liveDisplayLastRender = now;
+    this._renderLiveDisplay();
+  }
+
+  _renderLiveDisplay() {
     const logsContent = document.querySelector("#recordContainer .records-live-content");
     if (!logsContent) return;
 
-    this._currentLogs = logs;
+    const logs = this._currentLogs;
 
     const recentLogs = logs.slice(-20);
     if (recentLogs.length === 0) return;

@@ -63,7 +63,7 @@ class ExperimentFlowManager extends EventEmitter {
   }
 
   _setupVisibilityHandler() {
-    document.addEventListener(EXPERIMENT_FLOW_DOM_EVENTS.VISIBILITY_CHANGE, () => {
+    this._visibilityHandler = () => {
       if (document.hidden) {
         if (this.isRunning && !this.isPaused) {
           this.pausedByVisibility = true;
@@ -75,7 +75,8 @@ class ExperimentFlowManager extends EventEmitter {
           this.resumeExperiment();
         }
       }
-    });
+    };
+    document.addEventListener(EXPERIMENT_FLOW_DOM_EVENTS.VISIBILITY_CHANGE, this._visibilityHandler);
   }
 
   /**
@@ -597,6 +598,10 @@ class ExperimentFlowManager extends EventEmitter {
   destroy() {
     this.stopExperiment("destroy");
     this.clearListeners();
+    if (this._visibilityHandler) {
+      document.removeEventListener(EXPERIMENT_FLOW_DOM_EVENTS.VISIBILITY_CHANGE, this._visibilityHandler);
+      this._visibilityHandler = null;
+    }
     this._loadedUnits = [];
     this._completedUnits.clear();
     Logger.debug("ExperimentFlowManager 已銷毀");

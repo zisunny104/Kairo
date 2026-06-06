@@ -1766,3 +1766,51 @@
     padding: 8px 0;
     font-size: 13px;
 }
+
+/* ===== 響應式頁面切換：大螢幕顯示按鈕群，小螢幕改用下拉選單 ===== */
+
+/* 預設：顯示按鈕群，隱藏下拉 */
+.sync-page-select-wrapper {
+    display: none;
+    align-items: center;
+}
+
+/* 下拉選單外觀與按鈕群風格保持一致 */
+.sync-page-select {
+    appearance: none;
+    -webkit-appearance: none;
+    padding: 6px 28px 6px 10px;
+    border: 2px solid #e0e0e0;
+    border-radius: 0.375rem;
+    background-color: white;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236c757d' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    font-size: 13px;
+    font-weight: 600;
+    color: #666;
+    cursor: pointer;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    min-width: 90px;
+}
+
+.sync-page-select:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+}
+
+.sync-page-select:hover {
+    border-color: #999;
+    background-color: #f5f5f5;
+}
+
+/* 小螢幕（≤ 520px）：隱藏按鈕群，顯示下拉 */
+@media (max-width: 520px) {
+    .sync-page-toggle-group {
+        display: none !important;
+    }
+    .sync-page-select-wrapper {
+        display: flex;
+    }
+}

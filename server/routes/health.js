@@ -33,7 +33,6 @@ router.get("/", (req, res) => {
     res.status(HTTP_STATUS.INTERNAL_ERROR).json({
       status: "error",
       message: "伺服器或資料庫異常",
-      error: error.message,
     });
   }
 });

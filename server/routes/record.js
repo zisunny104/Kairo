@@ -7,8 +7,18 @@ import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 import { Logger } from "../utils/logger.js";
+import { ADMIN_TOKEN } from "../config/server.js";
 
 const router = express.Router();
+
+function requireAdminToken(req, res, next) {
+  const token = req.headers["x-admin-token"];
+  if (!token || token !== ADMIN_TOKEN) {
+    Logger.warn(`record 管理端點未授權存取 | ip=${req.ip} | path=${req.path}`);
+    return res.status(403).json({ success: false, error: "需要管理員授權" });
+  }
+  next();
+}
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -65,7 +75,7 @@ router.get("/list", async (req, res) => {
     Logger.error("[ExperimentLogs] List error:", error.message);
     res.status(500).json({
       success: false,
-      error: error.message,
+      error: "伺服器內部錯誤",
     });
   }
 });
@@ -116,7 +126,7 @@ router.post("/save", async (req, res) => {
     Logger.error("[ExperimentLogs] Save error:", error.message);
     res.status(500).json({
       success: false,
-      error: error.message,
+      error: "伺服器內部錯誤",
     });
   }
 });
@@ -166,7 +176,7 @@ router.get("/read/:filename", async (req, res) => {
     Logger.error("[ExperimentLogs] Read error:", error.message);
     res.status(500).json({
       success: false,
-      error: error.message,
+      error: "伺服器內部錯誤",
     });
   }
 });
@@ -175,7 +185,7 @@ router.get("/read/:filename", async (req, res) => {
  * PATCH /api/record/update-participant/:filename
  * 更新日誌檔案中所有 exp_start / exp_end 的 participant 欄位
  */
-router.patch("/update-participant/:filename", async (req, res) => {
+router.patch("/update-participant/:filename", requireAdminToken, async (req, res) => {
   try {
     const { filename } = req.params;
     const { participant } = req.body;
@@ -224,7 +234,7 @@ router.patch("/update-participant/:filename", async (req, res) => {
     res.json({ success: true, filename: safeFilename, participant });
   } catch (error) {
     Logger.error("[ExperimentLogs] UpdateParticipant error:", error.message);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: "伺服器內部錯誤" });
   }
 });
 
@@ -232,7 +242,7 @@ router.patch("/update-participant/:filename", async (req, res) => {
  * DELETE /api/record/delete/:filename
  * 刪除日誌檔案
  */
-router.delete("/delete/:filename", async (req, res) => {
+router.delete("/delete/:filename", requireAdminToken, async (req, res) => {
   try {
     const { filename } = req.params;
 
@@ -271,7 +281,7 @@ router.delete("/delete/:filename", async (req, res) => {
     Logger.error("[ExperimentLogs] Delete error:", error.message);
     res.status(500).json({
       success: false,
-      error: error.message,
+      error: "伺服器內部錯誤",
     });
   }
 });

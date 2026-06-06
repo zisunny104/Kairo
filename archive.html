@@ -1,0 +1,1066 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self' data:; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; img-src 'self' data:;">
+  <title>實驗檔案庫 | 碩論進行中</title>
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <link rel="stylesheet" href="css/style.css" data-versioned>
+
+  <style>
+    /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     * archive.html 專用樣式
+     * 主要文字: 14-16px / 次要: 12px
+     * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+
+    body.archive-page {
+      margin: 0;
+      padding: 20px;
+      min-height: 100vh;
+      background: #f0f2f5;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      box-sizing: border-box;
+      user-select: text;
+      -webkit-user-select: text;
+      -webkit-text-size-adjust: none;
+    }
+
+    /* archive 頁面保留同步膠囊指示器 */
+
+    /* ===== 檔案清單側邊欄 ===== */
+    .archive-page .container {
+      position: relative;
+    }
+    .archive-sidebar {
+      flex: 0 0 40%;
+      border-right: 2px solid #e0e0e0;
+      padding: 30px;
+      overflow-y: auto;
+      background: #f9f9f9;
+      user-select: none;
+      box-sizing: border-box;
+      transition: width 0.25s ease, opacity 0.25s ease, padding 0.25s ease, flex 0.3s ease;
+    }
+    .archive-sidebar.collapsed {
+      flex: 0 0 0;
+      width: 0 !important;
+      min-width: 0 !important;
+      overflow: hidden;
+      opacity: 0;
+      padding: 0;
+      border-right: none;
+    }
+    /* ===== 檔案檢視區 ===== */
+    .archive-viewer-panel {
+      flex: 1;
+      min-width: 0;
+      padding: 30px;
+      overflow: hidden;
+      background: transparent;
+    }
+    /* ===== 側邊欄收折按鈕 ===== */
+    .archive-panel-toggle {
+      position: absolute;
+      left: 0; top: 50%;
+      transform: translateY(-50%);
+      width: 22px; height: 48px;
+      background: white;
+      border: 2px solid #e0e0e0; border-left: none;
+      border-radius: 0 6px 6px 0;
+      cursor: pointer; z-index: 10;
+      display: flex; align-items: center; justify-content: center;
+      color: #888; font-size: 14px;
+      transition: left 0.25s ease, background 0.12s;
+    }
+    .archive-panel-toggle:hover { background: #f5f5f5; color: #333; }
+    .archive-sidebar.collapsed ~ .archive-panel-toggle { left: 0; }
+    .archive-panel-toggle-icon { font-style: normal; }
+
+    /* ===== 左側通用 ===== */
+    .archive-page .experiment-title {
+      font-size: 22px;
+      margin-bottom: 18px;
+      padding-bottom: 12px;
+    }
+
+    .archive-section-row {
+      display: flex; align-items: center;
+      justify-content: space-between; margin-bottom: 8px;
+    }
+    .archive-section-row h2 { margin: 0; }
+
+    .archive-icon-btn {
+      display: flex; align-items: center; justify-content: center;
+      width: 30px; height: 30px;
+      border: 2px solid #ddd; border-radius: 6px;
+      background: white; cursor: pointer; color: #555; flex-shrink: 0;
+      transition: background 0.12s, border-color 0.12s;
+    }
+    .archive-icon-btn:hover { background: #f0f0f0; border-color: #999; }
+
+    .archive-status { font-size: 13px; color: #888; padding: 8px 4px; }
+    .archive-status--error { color: #c0392b; }
+
+    /* ===== 左側篩選框 ===== */
+    .archive-file-filter-wrap { margin-bottom: 8px; }
+    .archive-file-filter {
+      width: 100%; box-sizing: border-box;
+      padding: 7px 10px; font-size: 13px;
+      border: 2px solid #e0e0e0; border-radius: 6px;
+      outline: none; background: white; color: #333;
+      transition: border-color 0.12s;
+    }
+    .archive-file-filter:focus { border-color: #667eea; }
+
+    /* ===== 檔案清單項目（卡片 + 原生 checkbox） ===== */
+    #serverFilesList, #localFilesList {
+      max-height: 360px;
+      overflow-y: auto;
+    }
+
+    .archive-file-card {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 11px; margin-bottom: 5px;
+      background: white; border: 2px solid #e0e0e0; border-radius: 6px;
+      transition: border-color 0.12s, background 0.12s;
+      cursor: default;
+    }
+    .archive-file-card:hover  { border-color: #667eea; background: #fafbff; }
+    .archive-file-card.is-active   { border-color: #667eea; background: #eef1ff; }
+    .archive-file-card.is-selected { border-color: #667eea99; }
+
+    .archive-file-checkbox {
+      flex-shrink: 0;
+      width: 16px; height: 16px;
+      margin: 0; cursor: pointer;
+      accent-color: #667eea;
+    }
+
+    .archive-file-info {
+      display: flex; flex-direction: column;
+      flex: 1; min-width: 0; cursor: pointer;
+    }
+    .archive-file-info:hover .archive-file-name { color: #667eea; }
+
+    .archive-file-name { font-size: 14px; font-weight: 600; color: #333; word-break: break-all; line-height: 1.4; transition: color 0.12s; }
+    .archive-file-meta { font-size: 12px; color: #999; margin-top: 2px; }
+
+    .archive-local-label {
+      font-size: 11px; font-weight: 700; color: #888;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      margin: 12px 0 6px;
+    }
+
+    .upload-zone {
+      border: 2px dashed #ccc; border-radius: 7px; padding: 16px 12px;
+      text-align: center; background: white; cursor: pointer;
+      transition: border-color 0.12s, background 0.12s;
+    }
+    .upload-zone.drag-over { border-color: #667eea; background: #f0f2ff; }
+    .upload-zone p { margin: 0 0 10px; font-size: 13px; color: #888; }
+    .btn-upload {
+      display: inline-block; padding: 7px 16px;
+      background: #667eea; color: white; border: none;
+      border-radius: 6px; font-size: 13px; cursor: pointer;
+      transition: background 0.12s;
+    }
+    .btn-upload:hover { background: #5a6fd6; }
+
+    .archive-upload-hint { font-size: 12px; color: #aaa; margin-top: 6px; text-align: center; }
+
+    /* ===== 工具列 ===== */
+    .archive-toolbar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 0 0 16px; margin-bottom: 16px;
+      border-bottom: 2px solid #e8e8e8; flex-wrap: wrap;
+    }
+    .archive-toolbar-title {
+      flex: 1; min-width: 0; font-size: 14px; font-weight: 600; color: #333;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .archive-toolbar-dirty {
+      display: inline-flex; align-items: center;
+      font-size: 11px; font-weight: 700;
+      color: #e67e22; background: #fef6ee;
+      border: 1.5px solid #e67e22; border-radius: 20px;
+      padding: 2px 8px; margin-left: 6px; white-space: nowrap; flex-shrink: 0;
+    }
+
+    .archive-view-toggle {
+      display: inline-flex; border: 2px solid #ddd; border-radius: 6px; overflow: hidden; flex-shrink: 0;
+    }
+    .archive-view-btn {
+      padding: 6px 14px; font-size: 14px; font-weight: 600; color: #666;
+      background: white; border: none; border-right: 2px solid #ddd; cursor: pointer;
+      transition: background 0.12s, color 0.12s;
+    }
+    .archive-view-btn:last-child { border-right: none; }
+    .archive-view-btn:hover { background: #f5f5f5; }
+    .archive-view-btn.is-active {
+      background: linear-gradient(135deg, #667eea 0%, #5568d3 100%);
+      color: white;
+    }
+
+    .archive-action-btn {
+      padding: 6px 13px; font-size: 14px; font-weight: 600;
+      border: 2px solid #ddd; border-radius: 6px; background: white;
+      cursor: pointer; color: #555; transition: all 0.12s; flex-shrink: 0;
+      display: inline-flex; align-items: center; gap: 5px;
+    }
+    .archive-action-btn:hover:not(:disabled) { border-color: #999; background: #f5f5f5; }
+    .archive-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .archive-action-btn--danger:hover:not(:disabled) { border-color: #e74c3c; color: #e74c3c; }
+    .archive-action-btn--upload { color: #2980b9; border-color: #b3d4f0; }
+    .archive-action-btn--upload:hover:not(:disabled) { background: #e8f4fd; border-color: #2980b9; }
+
+    /* ===== 空狀態 / 讀取中 / 錯誤 ===== */
+    .archive-viewer-state {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; min-height: 300px;
+      color: #bbb; text-align: center; gap: 14px;
+    }
+    .archive-viewer-state--error { color: #c0392b; }
+    .archive-viewer-state h3 { margin: 0; font-size: 16px; }
+    .archive-viewer-state p  { margin: 0; font-size: 14px; }
+
+    .archive-spinner {
+      width: 28px; height: 28px;
+      border: 3px solid #e0e0e0; border-top-color: #667eea;
+      border-radius: 50%; animation: arc-spin 0.7s linear infinite;
+    }
+    @keyframes arc-spin { to { transform: rotate(360deg); } }
+
+    /* ===== 摘要標頭 ===== */
+    .archive-summary {
+      background: white; border: 2px solid #e0e0e0; border-radius: 8px;
+      padding: 16px 18px; margin-bottom: 14px;
+    }
+    .archive-summary-title {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
+    }
+    .archive-summary-title h3 { margin: 0; font-size: 16px; font-weight: 700; color: #222; flex: 1; min-width: 0; }
+
+    .archive-tag {
+      display: inline-block; padding: 3px 10px; border-radius: 10px;
+      font-size: 12px; font-weight: 700; flex-shrink: 0;
+    }
+    .archive-tag--server { background: #e8f4fd; color: #2980b9; }
+    .archive-tag--local  { background: #fef9e7; color: #d68910; }
+
+    .archive-stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    @media (max-width: 800px) { .archive-stat-grid { grid-template-columns: repeat(2, 1fr); } }
+    .archive-stat {
+      background: #f5f6f8; border: 2px solid #e8e8e8; border-radius: 6px; padding: 9px 12px;
+    }
+    .archive-stat-label {
+      display: flex; align-items: center; gap: 5px;
+      font-size: 12px; color: #888; margin-bottom: 4px; font-weight: 600;
+    }
+    .archive-stat-value { display: block; font-size: 14px; font-weight: 600; color: #222; word-break: break-all; }
+    .archive-stat-subid { font-size: 12px; color: #bbb; margin-left: 6px; }
+
+    .archive-icon-action {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 24px; height: 24px; padding: 0;
+      background: none; border: 2px solid #ddd; border-radius: 5px;
+      cursor: pointer; color: #667eea; flex-shrink: 0;
+      transition: background 0.12s, border-color 0.12s;
+    }
+    .archive-icon-action:hover { background: #f0f2ff; border-color: #667eea; }
+
+    .archive-stat--editable .archive-stat-value { display: flex; align-items: center; gap: 6px; }
+    .archive-stat-input {
+      flex: 1; font-size: 14px; font-weight: 600; color: #222;
+      border: 2px solid #667eea; border-radius: 4px; padding: 2px 6px;
+      outline: none; min-width: 0; background: white;
+    }
+    .archive-stat--copyable .archive-stat-value:hover { color: #667eea; cursor: pointer; }
+
+    /* ===== 計數列 + 篩選 ===== */
+    .archive-count-bar {
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 12px; padding: 0 2px;
+      flex-wrap: wrap;
+    }
+    .archive-entries-count { font-size: 14px; color: #888; flex: 1; }
+    .archive-edit-history {
+      font-size: 14px; color: #e67e22;
+      cursor: pointer;
+      transition: color 0.12s;
+    }
+    .archive-edit-history:hover { color: #c0680a; }
+
+    /* 編輯記錄彈出框 */
+    .archive-history-popup {
+      position: fixed; z-index: 9999;
+      background: white; border: 2px solid #e67e22; border-radius: 8px;
+      padding: 14px 16px; min-width: 320px; max-width: 480px;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.15);
+    }
+    .history-list {
+      max-height: 280px; overflow-y: auto;
+      margin: 10px 0; border: 2px solid #f0f0f0; border-radius: 6px;
+    }
+    .history-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 12px; border-bottom: 1px solid #f5f5f5; font-size: 13px;
+    }
+    .history-item:last-child { border-bottom: none; }
+    .history-item-num  { color: #ccc; font-size: 12px; flex-shrink: 0; min-width: 24px; }
+    .history-item-label { flex: 1; color: #333; }
+    .history-item-time  { font-size: 11px; color: #bbb; flex-shrink: 0; }
+    .history-current-tag {
+      font-size: 11px; color: #aaa; flex-shrink: 0;
+      background: #f5f5f5; padding: 2px 7px; border-radius: 4px;
+    }
+    .history-item-actions { display: flex; gap: 5px; flex-shrink: 0; }
+    .history-revoke-btn, .history-undo-btn {
+      padding: 3px 9px; font-size: 12px; font-weight: 600;
+      border: 1.5px solid; border-radius: 5px; cursor: pointer; transition: all 0.12s;
+    }
+    .history-revoke-btn { background: #1565c0; color: white; border-color: #1565c0; }
+    .history-revoke-btn:hover { background: #0d47a1; border-color: #0d47a1; }
+    .history-undo-btn { background: #ff9800; color: white; border-color: #ff9800; }
+    .history-undo-btn:hover { background: #e68900; border-color: #e68900; }
+    .archive-filter-note   { font-size: 12px; color: #667eea; margin-left: 4px; }
+    .archive-filter-row    { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+    .archive-count-btn {
+      padding: 5px 11px; font-size: 13px; font-weight: 600;
+      border: 2px solid #ddd; border-radius: 6px; background: white;
+      cursor: pointer; color: #555; transition: all 0.12s;
+      display: inline-flex; align-items: center; gap: 4px;
+    }
+    .archive-count-btn:hover:not(:disabled) { border-color: #999; background: #f5f5f5; }
+    .archive-count-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .archive-count-btn--danger:hover:not(:disabled) { border-color: #e74c3c; color: #e74c3c; }
+    .archive-filter-label  { font-size: 13px; color: #888; white-space: nowrap; }
+    .archive-filter-select {
+      padding: 5px 10px; font-size: 13px;
+      border: 2px solid #ddd; border-radius: 6px;
+      background: white; color: #333; cursor: pointer; outline: none;
+      transition: border-color 0.12s;
+    }
+    .archive-filter-select:focus { border-color: #667eea; }
+
+    /* ===== 時間軸視圖 ===== */
+    .archive-timeline {
+      position: relative;
+      padding-left: 32px;
+      padding-bottom: 20px;
+    }
+    .archive-timeline::before {
+      content: '';
+      position: absolute;
+      left: 12px; top: 16px; bottom: 16px;
+      width: 2px;
+      background: #dee2e6;
+      border-radius: 1px;
+      z-index: 0;
+    }
+
+    .archive-tl-item {
+      position: relative;
+      margin-bottom: 10px;
+    }
+
+    /* 時間軸節點（顏色由 JS inline style 控制） */
+    .archive-tl-dot {
+      position: absolute;
+      left: -23px; top: 15px;
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: #bdc3c7;
+      z-index: 1;
+    }
+    .archive-tl-dot--step {
+      width: 12px; height: 12px;
+      left: -24px; top: 14px;
+    }
+
+    /* 頂層事件卡片（邊框顏色由 JS inline style 控制） */
+    .archive-top-card {
+      background: white;
+      border: 2px solid #e0e0e0;
+      border-radius: 7px;
+      padding: 12px 16px;
+      cursor: default;
+    }
+    .archive-top-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.07); }
+    .archive-top-card-header {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+    }
+    .archive-top-badge {
+      display: inline-block; padding: 3px 10px; border-radius: 10px;
+      font-size: 13px; font-weight: 700; white-space: nowrap;
+    }
+    .archive-top-time { font-size: 12px; font-family: monospace; color: #999; }
+    .archive-top-body { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 14px; color: #555; }
+    .archive-top-field { display: flex; gap: 5px; }
+    .archive-top-label { color: #aaa; }
+    .archive-top-val   { color: #333; font-weight: 500; }
+
+    /* 合併事件卡片 */
+    .archive-merged-count { font-size: 12px; color: #aaa; margin-left: auto; }
+    .archive-merged-row   { display: flex; align-items: center; gap: 10px; padding: 6px 0; flex-wrap: wrap; }
+    .archive-merged-divider { border-top: 1px dashed #e0e0e0; margin: 2px 0; }
+
+    /* ── 步驟群組卡片 ── */
+    .archive-step-item { position: relative; margin-bottom: 14px; }
+    .archive-step-card {
+      background: white;
+      border: 2px solid #2980b9;
+      border-radius: 7px;
+      overflow: hidden;
+    }
+
+    .archive-step-header {
+      display: flex; align-items: center; gap: 10px;
+      padding: 11px 16px; cursor: pointer; user-select: none;
+      background: #f0f7ff;
+    }
+    .archive-step-header:hover { background: #e8f2fc; }
+
+    /* 步驟編號 */
+    .archive-step-num {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 32px; height: 24px; padding: 0 6px;
+      background: #2980b9; color: white;
+      border-radius: 6px; font-size: 13px; font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    /* 步驟名稱區塊 */
+    .archive-step-label { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+    .archive-step-name  { font-size: 15px; font-weight: 600; color: #1a3a5c; line-height: 1.3; }
+    .archive-step-subname { font-size: 12px; color: #6b8cad; line-height: 1.3; }
+
+    .archive-step-summary {
+      font-size: 13px; color: #777; margin-left: auto;
+      display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+    }
+    .archive-step-time { font-family: monospace; font-size: 12px; color: #999; }
+    /* 標記圖示（對應 board 三種按鈕） */
+    .attempt-chip {
+      display: inline-flex; align-items: center; gap: 3px;
+      font-weight: 700;
+    }
+    .attempt-chip svg { vertical-align: middle; flex-shrink: 0; }
+    .attempt-chip b   { font-size: 13px; }
+    .attempt-label    { font-size: 13px; margin-left: 2px; }
+    .archive-step-toggle {
+      flex-shrink: 0;
+      background: none; border: none; cursor: pointer; padding: 0 2px;
+    }
+
+    .archive-step-tag {
+      font-size: 11px; font-weight: 700;
+      opacity: 0.75;
+    }
+
+    .archive-step-body {
+      border-top: 2px solid #d4e8f7;
+      padding: 8px 16px;
+      background: #fafcff;
+    }
+
+    /* 子記錄行（已改用 .archive-sub-table，此保留相容） */
+    .archive-sub-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 6px 0; border-bottom: 1px solid #eef2f7; font-size: 14px;
+    }
+    .archive-sub-row:last-child { border-bottom: none; }
+    /* ===== 子記錄表格（展開後） ===== */
+    .archive-step-body { user-select: text; -webkit-user-select: text; }
+    .archive-sub-table {
+      width: 100%; border-collapse: collapse; font-size: 14px;
+      user-select: text; -webkit-user-select: text;
+    }
+    .archive-sub-table thead th {
+      font-size: 12px; font-weight: 600; color: #aaa;
+      padding: 5px 10px 4px; text-align: left;
+      border-bottom: 2px solid #e4edf7; white-space: nowrap;
+    }
+    .th-raw { font-size: 11px; color: #ccc; font-weight: 400; margin-left: 3px; }
+    .archive-sub-table tbody tr { border-bottom: 1px solid #eef2f7; }
+    .archive-sub-table tbody tr:last-child { border-bottom: none; }
+    .archive-sub-table tbody tr:hover { background: rgba(0,0,0,0.02); }
+    .archive-sub-table tbody tr.same-ts-row td:first-child { border-top: 1px dashed #d0dff0; }
+    .archive-sub-table td { padding: 6px 10px; vertical-align: middle; color: #444; }
+
+    /* 時間欄 */
+    .archive-sub-time { font-size: 12px; color: #aaa; white-space: nowrap; }
+    .archive-sub-time.ts-editable {
+      cursor: pointer; color: #888; border-bottom: 1px dashed #ccc; transition: color 0.1s;
+    }
+    .archive-sub-time.ts-editable:hover { color: #667eea; border-bottom-color: #667eea; }
+    .archive-sub-time.ts-editing { white-space: nowrap; }
+
+    /* 時間戳彈出框 */
+    .archive-ts-popup {
+      position: fixed; z-index: 9999;
+      background: white; border: 2px solid #667eea; border-radius: 8px;
+      padding: 14px 16px; min-width: 300px;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.15);
+    }
+    .ts-popup-head {
+      font-size: 14px; font-weight: 600; color: #333;
+      display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+    }
+    .ts-popup-key {
+      font-size: 12px; color: #667eea;
+      background: #eef1ff; padding: 1px 7px; border-radius: 4px;
+    }
+    .ts-popup-adj-row { display: flex; gap: 6px; margin-bottom: 10px; }
+    .ts-adj-btn {
+      flex: 1; padding: 6px 4px; font-size: 12px;
+      background: #f5f5f5; border: 2px solid #e0e0e0; border-radius: 5px;
+      cursor: pointer; color: #555; transition: all 0.12s;
+    }
+    .ts-adj-btn:hover { background: #667eea; border-color: #667eea; color: white; }
+    .ts-popup-input-row {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+    }
+    .ts-input-label { font-size: 12px; color: #888; white-space: nowrap; }
+    .ts-ms-input {
+      flex: 1; padding: 6px 10px; font-size: 13px;
+      border: 2px solid #ddd; border-radius: 5px; outline: none;
+      transition: border-color 0.12s;
+    }
+    .ts-ms-input:focus { border-color: #667eea; }
+    .ts-popup-preview { font-size: 13px; color: #888; margin-bottom: 12px; }
+    .ts-rel-preview   { color: #333; font-weight: 600; }
+    .ts-popup-actions { display: flex; gap: 8px; justify-content: flex-end; }
+    .ts-action-btn {
+      padding: 7px 16px; font-size: 13px; font-weight: 600;
+      border: none; border-radius: 6px; cursor: pointer; transition: all 0.12s;
+    }
+    .ts-revert-btn { background: #ff9800; color: white; }
+    .ts-revert-btn:hover { background: #e68900; }
+    .ts-cancel-btn { background: #757575; color: white; }
+    .ts-cancel-btn:hover { background: #616161; }
+    .ts-save-btn   { background: #667eea; color: white; }
+    .ts-save-btn:hover { background: #5568d3; }
+
+    .archive-sub-badge {
+      display: inline-block; padding: 2px 10px; border-radius: 8px;
+      font-size: 13px; font-weight: 700; white-space: nowrap;
+      border: 1.5px solid transparent;
+    }
+    .badge-clickable {
+      cursor: pointer; transition: filter 0.12s;
+    }
+    .badge-clickable:hover { filter: brightness(0.92); }
+
+    /* 標記三選一彈出框 */
+    .archive-mark-popup {
+      position: fixed; z-index: 9999;
+      display: flex; gap: 6px;
+      background: white; border: 2px solid #e0e0e0; border-radius: 8px;
+      padding: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+    }
+    .mark-choice-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 40px; height: 40px; padding: 0;
+      border: none; border-radius: 6px;
+      color: white; cursor: pointer; transition: filter 0.12s;
+    }
+    .mark-choice-btn:hover   { filter: brightness(1.12); }
+    .mark-choice-btn.is-current { box-shadow: 0 0 0 3px rgba(0,0,0,0.25); }
+
+    .attempt-editable { cursor: pointer; }
+    .attempt-editable:hover { filter: brightness(0.93); }
+    .archive-sub-detail { color: #444; font-size: 14px; }
+    .archive-sub-result { font-size: 14px; }
+
+    /* 原始 ID（小字，無等寬） */
+    .archive-sub-rawid  { font-size: 12px; color: #bbb; margin-left: 3px; }
+    .archive-step-rawid { font-size: 11px; color: #bbb; line-height: 1.3; }
+
+    /* 空值灰色橫線 */
+    .cell-empty { color: #ccc; }
+
+    /* ===== 重新標記按鈕（獨立於 view-toggle） ===== */
+    .archive-view-btn--remark {
+      margin-left: 6px;
+      border: 2px solid #e67e22 !important;
+      color: #e67e22;
+    }
+    .archive-view-btn--remark.is-active {
+      background: #e67e22; color: white;
+    }
+    .archive-action-btn--remark {
+      margin-left: 6px; border-color: #e67e22; color: #e67e22;
+    }
+    .archive-action-btn--remark:hover:not(:disabled) {
+      background: #fef6ee; border-color: #ca6f1e; color: #ca6f1e;
+    }
+    .archive-action-btn--remark.is-active {
+      background: #e67e22; color: white; border-color: #e67e22;
+    }
+    .archive-action-btn--remark.is-active:hover:not(:disabled) {
+      background: #ca6f1e; border-color: #ca6f1e; color: white;
+    }
+
+    /* ===== 重新標記模式佈局 ===== */
+    .remark-layout {
+      display: flex; gap: 0; min-height: 500px;
+    }
+    .remark-timeline {
+      flex: 1; min-width: 0;
+      border-right: 2px solid #e0e0e0;
+      padding-right: 18px;
+      overflow-y: auto; max-height: 80vh;
+    }
+
+    /* ===== 標記工作區（中欄，自適應）===== */
+    .remark-workspace {
+      flex: 1; min-width: 0;
+      border-right: 2px solid #e0e0e0;
+      padding-left: 18px;
+      display: flex; flex-direction: column;
+      max-height: 80vh;
+      /* 不在此捲動，由內層 remark-workspace-scroll 負責 */
+    }
+    .remark-workspace-scroll {
+      flex: 1; overflow-y: auto;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    /* ── Sticky 操作頭部 ── */
+    .remark-workspace-header {
+      position: sticky; top: 0; z-index: 5;
+      background: white;
+      padding: 12px 0;
+      border-bottom: 2px solid #f0f0f0;
+      margin-bottom: 4px;
+    }
+    .remark-workspace-toolbar {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 12px; color: #888;
+      padding: 6px 0 2px;
+    }
+    .remark-sel-count {
+      font-size: 12px; font-weight: 700; color: #667eea;
+      background: #f0f2ff; padding: 2px 8px; border-radius: 10px;
+    }
+
+    /* ── 計時器列：讓計時器佔滿右側，避免跳動 ── */
+    .remark-rec-row {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
+    }
+    /* remark-rec-timer 定義在下方計時器區塊，此處移除重複定義 */
+    ._placeholder_removed {
+      display: none;
+    }
+
+    /* ── 卡片選取 / 拖曳狀態 ── */
+    .remark-track-card--src[draggable="true"] { cursor: grab; }
+    .remark-track-card--src[draggable="true"]:active { cursor: grabbing; }
+    .remark-track-card--src.is-selected {
+      box-shadow: inset 0 0 0 2px #667eea;
+      background: #f0f2ff;
+    }
+    .remark-track-card--mark.drag-over {
+      box-shadow: inset 0 0 0 2px #e67e22 !important;
+      background: #fdebd0 !important;
+    }
+    .remark-assign-sel {
+      padding: 2px 7px; font-size: 11px; font-weight: 700;
+      background: #667eea; color: white; border: none; border-radius: 5px;
+      cursor: pointer; white-space: nowrap;
+    }
+    .remark-assign-sel:hover { background: #5568d3; }
+    .remark-toggle-label {
+      display: flex; align-items: center; gap: 5px; cursor: pointer; user-select: none;
+    }
+    .remark-workspace-track {
+      display: flex; flex-direction: column; gap: 5px;
+    }
+    .remark-workspace-output {
+      padding-top: 8px; border-top: 1px solid #f0f0f0;
+    }
+
+    /* ── 標記軌道卡片 ── */
+    .remark-track-card {
+      display: flex; align-items: center; gap: 8px;
+      border: 2px solid #e0e0e0; border-radius: 7px;
+      padding: 6px 10px; font-size: 13px;
+      background: white; cursor: default;
+    }
+    .remark-track-card--src {
+      background: #fafafa; border-color: #e0e0e0;
+    }
+    /* 待指派標記點：虛線框、淺灰底 = 未完成/草稿感 */
+    .remark-track-card--mark {
+      border: 2px dashed #bbb; background: #f8f8f8; cursor: pointer;
+      color: #666;
+    }
+    .remark-track-card--mark:hover { background: #f0f0f0; border-color: #999; }
+    .remark-track-card--mark.is-selected {
+      border-color: #667eea; border-style: dashed;
+      background: #f0f2ff; box-shadow: inset 0 0 0 1px #667eea;
+    }
+    /* 標記點序號徽章（橘色，易於辨識） */
+    .remark-mark-badge {
+      background: #e67e22; color: white;
+      font-size: 11px; font-weight: 700;
+    }
+    .remark-track-source {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 20px; height: 20px; border-radius: 50%;
+      color: white; font-size: 11px; font-weight: 700; flex-shrink: 0;
+    }
+    .remark-track-time {
+      font-family: monospace; font-size: 12px; color: #888; white-space: nowrap; min-width: 68px;
+    }
+    .remark-track-label { font-weight: 600; color: #333; flex-shrink: 0; }
+    .remark-track-detail { font-size: 12px; color: #888; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .remark-track-actions { display: flex; align-items: center; gap: 4px; margin-left: auto; flex-shrink: 0; }
+    .remark-track-empty { font-size: 13px; color: #ccc; padding: 16px 0; text-align: center; }
+
+    /* ===== 匯入面板（最右，收折）===== */
+    /* 面板本體：panel 在前，toggle 在後（toggle 永遠最右） */
+    .remark-import-panel {
+      width: 0; flex-shrink: 0; overflow: hidden;
+      transition: flex 0.25s ease, width 0.25s ease;
+    }
+    .remark-import-panel.is-open {
+      flex: 1; min-width: 200px; overflow-y: auto; max-height: 80vh;
+      border-left: 2px solid #e0e0e0;
+      border-right: 2px solid #e0e0e0;
+    }
+    /* 收折按鈕：對稱左側 archive-panel-toggle，掛在右側邊緣 */
+    .remark-import-toggle {
+      align-self: center; flex-shrink: 0;
+      width: 22px; height: 48px;
+      background: white;
+      border: 2px solid #e0e0e0; border-left: none;
+      border-radius: 0 6px 6px 0;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      color: #888; font-size: 14px;
+      transition: background 0.12s, color 0.12s;
+      z-index: 10;
+    }
+    .remark-import-toggle:hover { background: #f5f5f5; color: #333; }
+    .remark-import-content {
+      padding: 16px;
+      display: flex; flex-direction: column; gap: 8px;
+      height: 100%; box-sizing: border-box;
+    }
+    .remark-import-title {
+      font-size: 11px; font-weight: 700; color: #999;
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+
+    /* ===== 重新標記面板（舊，保留共用樣式）===== */
+    .remark-section { display: flex; flex-direction: column; gap: 8px; }
+    .remark-section-title {
+      font-size: 12px; font-weight: 700; color: #999;
+      text-transform: uppercase; letter-spacing: 0.05em;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .remark-count-badge {
+      background: #667eea; color: white;
+      padding: 1px 7px; border-radius: 10px; font-size: 11px;
+    }
+    .remark-hint { font-size: 13px; color: #888; margin: 0 0 10px; line-height: 1.5; }
+
+    /* 開始按鈕（舊，保留相容） */
+    .remark-start-btn {
+      width: 100%; padding: 10px; font-size: 14px; font-weight: 700;
+      background: #e67e22; color: white; border: none; border-radius: 7px;
+      cursor: pointer; transition: background 0.12s;
+    }
+    .remark-start-btn:hover { background: #ca6f1e; }
+
+    /* 統一動作按鈕：繼續標記 / 從頭開始 / 暫停 / 停止 */
+    .remark-action-btn {
+      display: block; width: 100%; /* 單獨使用時撐滿 */
+      flex: 1; padding: 9px 14px; font-size: 14px; font-weight: 600;
+      background: #e67e22; color: white; border: none; border-radius: 7px;
+      cursor: pointer; transition: background 0.12s; white-space: nowrap;
+    }
+    .remark-action-btn:hover { background: #ca6f1e; }
+    .remark-action-btn--secondary {
+      background: #757575;
+    }
+    .remark-action-btn--secondary:hover { background: #616161; }
+
+    /* 倒數 */
+    .remark-countdown-wrap { text-align: center; padding: 10px 0; }
+    .remark-countdown-num {
+      font-size: 56px; font-weight: 700; color: #667eea; line-height: 1;
+    }
+    .remark-countdown-lbl { font-size: 13px; color: #aaa; margin-top: 6px; }
+
+    /* 記錄中 */
+    .remark-rec-row {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+    }
+    /* 狀態膠囊 */
+    .remark-status-pill {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 700;
+      background: #f0f2ff; color: #667eea; border: 1.5px solid #667eea;
+      white-space: nowrap; flex-shrink: 0;
+    }
+    .remark-status-pill.paused {
+      background: #f5f5f5; color: #757575; border-color: #bdbdbd;
+    }
+    .remark-status-pill.done {
+      background: #e8f5e9; color: #2e7d32; border-color: #4caf50;
+    }
+    .remark-done-count { font-size: 13px; color: #666; }
+
+    /* 計時器：與頁面其他時間顯示一致（系統預設等寬），居中灰色 */
+    .remark-rec-timer {
+      font-family: monospace;
+      font-size: 18px; font-weight: 700; color: #888;
+      background: white; padding: 4px 10px;
+      border-radius: 5px; box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+      letter-spacing: 0.5px; flex: 1; text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* 舊用 dot/lbl（相容保留） */
+    .remark-rec-dot {
+      width: 10px; height: 10px; background: #f44336; border-radius: 50%;
+      animation: remark-blink 1s ease-in-out infinite; flex-shrink: 0;
+    }
+    @keyframes remark-blink { 0%,100% { opacity: 1 } 50% { opacity: 0.2 } }
+    .remark-rec-lbl { font-size: 14px; font-weight: 700; color: #f44336; }
+
+    /* 打點按鈕 */
+    .remark-mark-btn {
+      width: 100%; padding: 18px; font-size: 16px; font-weight: 700;
+      background: #667eea; color: white; border: none; border-radius: 8px;
+      cursor: pointer; transition: background 0.1s; margin-bottom: 8px;
+      touch-action: manipulation;
+    }
+    .remark-mark-btn:hover  { background: #5568d3; }
+    .remark-mark-btn.mark-flash { background: #27ae60; }
+    .remark-mark-btn.disabled { opacity: 0.4; cursor: not-allowed; }
+    .remark-stop-btn {
+      flex: 1; padding: 8px; font-size: 13px;
+      background: #757575; color: white; border: none; border-radius: 6px;
+      cursor: pointer;
+    }
+    .remark-stop-btn:hover { background: #616161; }
+
+    /* 兩按鈕並排列 */
+    .remark-btn-row { display: flex; gap: 8px; }
+    .remark-btn-row .remark-start-btn { flex: 1; }
+    .remark-btn-row .remark-stop-btn  { flex: 1; }
+    .remark-btn-row .remark-action-btn { flex: 1; }
+
+    /* 鍵盤提示 */
+    .remark-key-hint { font-size: 11px; color: #aaa; text-align: center; margin: 4px 0; }
+
+    /* 暫停/停止列 */
+    .remark-sec-row { display: flex; gap: 8px; margin-top: 8px; }
+
+    /* 暫停狀態的點：停止閃爍，變灰 */
+    .remark-rec-dot.paused {
+      animation: none; background: #9e9e9e; opacity: 1;
+    }
+    .remark-rec-lbl.paused { color: #9e9e9e; }
+
+    /* 標記點選取高亮 */
+    .remark-mark-item { cursor: pointer; transition: background 0.1s; }
+    .remark-mark-item:hover { background: #f5f5f5; }
+    .remark-mark-item.is-selected {
+      background: #f0f2ff;
+      box-shadow: inset 0 0 0 2px #667eea;
+    }
+
+    /* 由此繼續按鈕 */
+    .remark-mark-continue {
+      padding: 2px 8px; font-size: 11px; font-weight: 700;
+      background: #e67e22; color: white; border: none; border-radius: 5px;
+      cursor: pointer; white-space: nowrap;
+    }
+    .remark-mark-continue:hover { background: #ca6f1e; }
+
+    /* 清除全部按鈕 */
+    .remark-clear-all-btn { margin-left: auto; font-size: 11px; }
+
+    /* 操作說明小字 */
+    .remark-mark-hint { font-size: 11px; color: #aaa; margin-bottom: 4px; }
+
+    /* 指派提示橫幅（時間軸頂端） */
+    .remark-assign-hint {
+      font-size: 12px; color: #e67e22; background: #fef6ee;
+      border: 1.5px solid #fad9b5; border-radius: 6px;
+      padding: 7px 10px; margin-bottom: 8px;
+    }
+
+    /* 時間軸在選取標記點時的可指派提示 */
+    .remark-timeline.has-mark-selected .archive-tl-item[data-entry-idx] { cursor: crosshair; }
+    .remark-timeline.has-mark-selected .archive-tl-item[data-entry-idx]:hover .archive-top-card {
+      outline: 2px dashed #e67e22; outline-offset: 1px;
+    }
+
+    /* 完成列 */
+    .remark-done-row { font-size: 14px; color: #333; }
+
+    /* 標記清單 */
+    .remark-mark-list { border: 2px solid #f0f0f0; border-radius: 6px; overflow: hidden; }
+    .remark-mark-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 7px 10px; border-bottom: 1px solid #f5f5f5; font-size: 14px;
+    }
+    .remark-mark-item:last-child { border-bottom: none; }
+    .remark-mark-num  { color: #ccc; font-size: 12px; min-width: 20px; }
+    .remark-mark-time { flex: 1; color: #333; }
+    .remark-mark-del  {
+      padding: 1px 8px; font-size: 13px; color: #e74c3c;
+      background: none; border: none; cursor: pointer;
+    }
+    .remark-mark-empty { font-size: 13px; color: #ccc; }
+
+    /* 第二檔案 */
+    .remark-drop-zone {
+      border: 2px dashed #ccc; border-radius: 6px;
+      padding: 14px 10px; text-align: center;
+      background: white; transition: border-color 0.12s, background 0.12s;
+    }
+    .remark-drop-zone.drag-over { border-color: #667eea; background: #f0f2ff; }
+    .remark-drop-zone p { font-size: 12px; color: #aaa; margin: 0 0 8px; line-height: 1.5; }
+    .remark-second-loaded {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 10px; background: #f5f5f5; border-radius: 6px;
+    }
+    .remark-second-name { flex: 1; font-size: 13px; color: #333; word-break: break-all; }
+
+    /* 完成按鈕 */
+    .remark-finish-row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .remark-finish-btn {
+      flex: 1; padding: 9px 12px; font-size: 13px; font-weight: 700;
+      background: #667eea; color: white; border: none; border-radius: 6px;
+      cursor: pointer; transition: background 0.12s;
+    }
+    .remark-finish-btn:hover { background: #5568d3; }
+    .remark-finish-merge { background: #27ae60; }
+    .remark-finish-merge:hover { background: #1e8449; }
+
+    /* ===== 表格視圖 ===== */
+    .archive-table-wrap {
+      background: white; border: 2px solid #e0e0e0; border-radius: 7px;
+      overflow: hidden;
+    }
+    .archive-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .archive-table thead th {
+      background: #f5f5f5; font-weight: 700; color: #555;
+      padding: 10px 14px; text-align: left;
+      border-bottom: 2px solid #e0e0e0; white-space: nowrap;
+    }
+    .archive-table tbody tr { border-bottom: 1px solid #efefef; }
+    .archive-table tbody tr:last-child { border-bottom: none; }
+    .archive-table tbody tr:hover { filter: brightness(0.97); }
+    .archive-table td { padding: 8px 14px; vertical-align: middle; color: #444; }
+    .at-num  { color: #bbb; font-family: monospace; width: 38px; font-size: 12px; }
+    .at-time { font-family: monospace; white-space: nowrap; color: #888; font-size: 12px; }
+    .at-type-badge {
+      display: inline-block; padding: 3px 10px; border-radius: 9px;
+      font-size: 12px; font-weight: 700; white-space: nowrap;
+      border: 2px solid transparent;
+    }
+    .at-detail { color: #444; word-break: break-word; }
+    .at-result { text-align: center; font-size: 14px; }
+
+    /* ===== 原始視圖（自動換行，不橫向滾動） ===== */
+    .archive-raw {
+      background: #1e1e2e; border-radius: 7px;
+      font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+      font-size: 13px; line-height: 1.65;
+      overflow: hidden;
+    }
+    .archive-raw-line { display: flex; }
+    .archive-raw-line:hover { background: rgba(255,255,255,0.04); }
+    .archive-raw-num {
+      flex-shrink: 0; width: 44px; padding: 3px 10px;
+      color: #565869; user-select: none; text-align: right;
+      border-right: 2px solid #2d2d3f;
+    }
+    .archive-raw-code {
+      flex: 1; padding: 3px 14px;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: #cdd6f4;
+      overflow-x: hidden;
+      min-width: 0;
+    }
+    .raw-key  { color: #89b4fa; }
+    .raw-str  { color: #a6e3a1; }
+    .raw-num  { color: #fab387; }
+    .raw-bool { color: #cba6f7; }
+    .raw-null { color: #6c7086; }
+  </style>
+</head>
+
+<body class="archive-page">
+  <div class="container">
+    <button class="archive-panel-toggle" id="archivePanelToggle" title="收折/展開左側面板">
+      <i class="archive-panel-toggle-icon" id="panelToggleIcon">&#8249;</i>
+    </button>
+
+    <!-- ===== 檔案清單側邊欄 ===== -->
+    <div class="archive-sidebar" id="archiveLeftPanel">
+      <h1 class="experiment-title">實驗檔案庫</h1>
+
+      <!-- 伺服器日誌 -->
+      <div class="input-section board-section" id="serverFilesSection">
+        <div class="archive-section-row">
+          <h2>伺服器日誌</h2>
+          <button class="archive-icon-btn" id="refreshServerBtn" title="重新整理">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+            </svg>
+          </button>
+        </div>
+        <div id="serverFilesList"><div class="archive-status">載入中…</div></div>
+      </div>
+
+      <!-- 上傳本機檔案 -->
+      <div class="input-section board-section" id="uploadSection">
+        <h2>上傳本機檔案</h2>
+        <div class="upload-zone" id="uploadZone">
+          <p>拖放 .jsonl 至此，或</p>
+          <button class="btn-upload" id="uploadBtn">選擇檔案</button>
+          <input type="file" id="archiveFileInput" accept=".jsonl" multiple style="display:none">
+        </div>
+        <p class="archive-upload-hint">本機檔案可在工具列上傳至伺服器</p>
+        <div id="localFilesList"></div>
+      </div>
+    </div>
+
+    <!-- ===== 檔案檢視區（工具列 + 內容皆由 JS 填入 archiveViewer） ===== -->
+    <div class="archive-viewer-panel">
+      <div id="archiveViewer">
+        <div class="archive-viewer-state">
+          <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
+            <polyline points="14,2 14,8 20,8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+          </svg>
+          <p>從左側選擇日誌檔案以檢視內容</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script type="module" src="./js/archive/archive-init.js"></script>
+</body>
+
+</html>

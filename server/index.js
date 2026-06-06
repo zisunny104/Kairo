@@ -268,10 +268,15 @@ setInterval(() => {
 }, sessionValidationInterval);
 
 // 提供管理員 Token 給前端管理介面（區網環境）
-// 安全說明：此端點在區網內無需認證即可取得 admin token。
-// 若需限制學員取得管理員權限，請在 .env 設定固定的 ADMIN_TOKEN，
-// 並透過 Nginx/防火牆等方式限制此路徑的存取。
+// 安全說明：需提供正確的 CREATE_CODE 才能取得 admin token，
+// 防止學員/參與者在不知道建立代碼的情況下取得管理員權限。
 app.get("/api/sync/admin-token", (req, res) => {
+  const provided = req.headers["x-create-code"] || req.query.createCode;
+  const valid = getValidCreateCode();
+  if (!valid || !provided || provided !== valid) {
+    Logger.warn(`admin-token 端點未授權存取 | ip=${req.ip}`);
+    return res.status(403).json({ success: false, message: "需要有效的建立代碼" });
+  }
   res.json({ token: ADMIN_TOKEN });
 });
 

@@ -168,9 +168,9 @@ export class ExperimentTimerManager {
         setTimeout(() => card.classList.remove("timer-card-pressed"), 400);
       }
 
+      const display = document.getElementById(`timer-display-${idx}`);
       this.timerIntervals[idx] = setInterval(() => {
         const currentElapsed = state.elapsedTime + (Date.now() - state.startTime);
-        const display = document.getElementById(`timer-display-${idx}`);
         if (display) {
           display.textContent = this.timeSyncManager.formatStopwatch(currentElapsed);
         }

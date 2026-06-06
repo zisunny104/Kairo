@@ -166,6 +166,16 @@ router.post("/generate_share_code", (req, res) => {
       });
     }
 
+    // 驗證 clientId 必須為該 session 的建立者，防止任意人為已知 session 產生代碼
+    if (session.created_by !== clientId) {
+      Logger.warn(`generate_share_code 未授權 | sessionId=${sessionId} | clientId=${clientId}`);
+      return res.status(HTTP_STATUS.FORBIDDEN).json({
+        success: false,
+        error: "UNAUTHORIZED",
+        message: "僅允許工作階段建立者產生分享代碼",
+      });
+    }
+
     const codeData = ShareCodeService.generateCode(sessionId, clientId);
     const shareUrl = `${req.baseUrl}/index.html?shareCode=${encodeURIComponent(codeData.share_code)}&role=${ROLE.VIEWER}`;
 
@@ -336,6 +346,16 @@ router.post("/session/:sessionId/share-code", (req, res) => {
         success: false,
         error: ERROR_CODES.SESSION_NOT_FOUND,
         message: "工作階段不存在或已過期",
+      });
+    }
+
+    // 驗證 clientId 必須為該 session 的建立者
+    if (session.created_by !== clientId) {
+      Logger.warn(`session share-code 未授權 | sessionId=${sessionId} | clientId=${clientId}`);
+      return res.status(HTTP_STATUS.FORBIDDEN).json({
+        success: false,
+        error: "UNAUTHORIZED",
+        message: "僅允許工作階段建立者產生分享代碼",
       });
     }
 

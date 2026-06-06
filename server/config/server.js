@@ -27,10 +27,11 @@ export const SERVER_CONFIG = {
   displayHost: process.env.DISPLAY_HOST || os.hostname(),
 
   // CORS設定
-  cors: {
-    origin: process.env.CORS_ORIGIN || "*",
-    credentials: true,
-  },
+  // credentials 僅在明確指定 origin 時才能開啟；wildcard 不允許帶憑證
+  cors: (() => {
+    const origin = process.env.CORS_ORIGIN || "*";
+    return { origin, credentials: origin !== "*" };
+  })(),
 
   // WebSocket設定
   websocket: {

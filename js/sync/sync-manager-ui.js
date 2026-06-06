@@ -197,13 +197,26 @@ export class SyncManagerUI {
     `;
   }
 
+  _getPageList() {
+    // this.syncManager 是 SyncManager 類本身（非實例），PAGE_LIST 是靜態屬性
+    const list = this.syncManager?.PAGE_LIST || {};
+    return Object.entries(list).map(([key, info]) => ({ key, name: info.name, path: info.path }));
+  }
+
   _renderControlPanelHeader() {
+    const pages = this._getPageList();
+    const btnHtml = pages.map(p =>
+      `<button class="sync-page-toggle-btn" data-page="${p.key}"><span class="btn-text-split">${p.name}</span></button>`
+    ).join("");
+    const optHtml = pages.map(p =>
+      `<option value="${p.key}">${p.name}</option>`
+    ).join("");
     return `
       <div class="modal-header">
         <h2 class="modal-title">同步面板</h2>
-        <div class="sync-page-toggle-group">
-          <button class="sync-page-toggle-btn sync-page-panel" data-page="${this.pageConfig.PANEL}"><span class="btn-text-split"></span></button>
-          <button class="sync-page-toggle-btn sync-page-experiment" data-page="${this.pageConfig.BOARD}"><span class="btn-text-split"></span></button>
+        <div class="sync-page-toggle-group">${btnHtml}</div>
+        <div class="sync-page-select-wrapper">
+          <select class="sync-page-select" title="切換頁面">${optHtml}</select>
         </div>
         <button class="modal-close-btn" title="關閉">×</button>
       </div>
@@ -435,50 +448,32 @@ export class SyncManagerUI {
         this.addDOMListener(closeBtn, "click", () => this.hidePanel());
       }
 
-      const pageToggleButtons = this.controlPanel.querySelectorAll(
-        ".sync-page-toggle-btn",
-      );
-      if (pageToggleButtons.length > 0) {
-        const panelBtn = this.controlPanel.querySelector("[data-page='panel']");
-        const experimentBtn = this.controlPanel.querySelector(
-          "[data-page='board']",
+      const pageToggleButtons = this.controlPanel.querySelectorAll(".sync-page-toggle-btn");
+      const pageSelect = this.controlPanel.querySelector(".sync-page-select");
+
+      const navigateToPage = (targetPage) => {
+        const basePath = window.location.pathname.substring(
+          0, window.location.pathname.lastIndexOf("/") + 1,
         );
-
-        const panelName = this.getPageName(this.pageConfig.PANEL);
-        const experimentName = this.getPageName(this.pageConfig.BOARD);
-
-        if (panelBtn) {
-          panelBtn.querySelector(".btn-text-split").textContent = panelName;
-          panelBtn.title = `切換至${panelName}`;
+        if (targetPage === this.pageConfig.PANEL) {
+          window.location.href = basePath.endsWith("/") ? basePath : basePath + "/";
+        } else {
+          window.location.href = basePath + this.getPagePath(targetPage);
         }
-        if (experimentBtn) {
-          experimentBtn.querySelector(".btn-text-split").textContent =
-            experimentName;
-          experimentBtn.title = `切換至${experimentName}`;
-        }
+      };
 
-        this.updatePageToggleButtonState();
-
+      if (pageToggleButtons.length > 0) {
         pageToggleButtons.forEach((btn) => {
-          this.addDOMListener(btn, "click", () => {
-            const targetPage = btn.dataset.page;
-            const basePath = window.location.pathname.substring(
-              0,
-              window.location.pathname.lastIndexOf("/") + 1,
-            );
-
-            let targetUrl;
-            if (targetPage === this.pageConfig.PANEL) {
-              targetUrl = basePath.endsWith("/") ? basePath : basePath + "/";
-            } else if (targetPage === this.pageConfig.BOARD) {
-              const experimentPath = this.getPagePath(this.pageConfig.BOARD);
-              targetUrl = basePath + experimentPath;
-            }
-
-            window.location.href = targetUrl;
-          });
+          btn.title = `切換至${btn.querySelector(".btn-text-split")?.textContent || btn.dataset.page}`;
+          this.addDOMListener(btn, "click", () => navigateToPage(btn.dataset.page));
         });
       }
+
+      if (pageSelect) {
+        this.addDOMListener(pageSelect, "change", () => navigateToPage(pageSelect.value));
+      }
+
+      this.updatePageToggleButtonState();
 
       this.addDOMListener(this.controlPanel, "click", (e) => {
         if (e.target === this.controlPanel) {
@@ -1097,23 +1092,22 @@ export class SyncManagerUI {
 
   updatePageToggleButtonState() {
     const currentPath = window.location.pathname;
-    let currentPage = "panel";
-
-    const experimentPath = this.getPagePath(this.pageConfig.BOARD);
-    if (currentPath.includes(experimentPath)) {
-      currentPage = "board";
+    let currentPage = this.pageConfig.PANEL;
+    const pages = this._getPageList();
+    for (const { key, path } of pages) {
+      if (key !== this.pageConfig.PANEL && path && currentPath.includes(path)) {
+        currentPage = key;
+        break;
+      }
     }
 
-    const pageToggleButtons = this.controlPanel.querySelectorAll(
-      ".sync-page-toggle-btn",
-    );
+    const pageToggleButtons = this.controlPanel.querySelectorAll(".sync-page-toggle-btn");
     pageToggleButtons.forEach((btn) => {
-      if (btn.dataset.page === currentPage) {
-        btn.classList.add("active");
-      } else {
-        btn.classList.remove("active");
-      }
+      btn.classList.toggle("active", btn.dataset.page === currentPage);
     });
+
+    const pageSelect = this.controlPanel.querySelector(".sync-page-select");
+    if (pageSelect) pageSelect.value = currentPage;
   }
 
   _getStatusTextMap() {

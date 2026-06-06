@@ -162,25 +162,21 @@ class TimeSyncManager {
       const includeTime = options.includeTime !== false;
       const includeSeconds = options.includeSeconds !== false;
 
-      // 使用更有效率的 Intl.DateTimeFormat 直接格式化
-      const formatter = new Intl.DateTimeFormat("zh-TW", {
-        ...(includeDate
-          ? {
-              year: "numeric",
-              month: "2-digit",
-              day: "2-digit",
-            }
-          : {}),
-        ...(includeTime
-          ? {
-              hour: "2-digit",
-              minute: "2-digit",
-              ...(includeSeconds ? { second: "2-digit" } : {}),
-            }
-          : {}),
-        timeZone: this.timezone,
-        hour12: false,
-      });
+      // 快取 Intl.DateTimeFormat，避免高頻呼叫（計時器每 50ms）時反覆建構
+      if (!this._dtfCache) this._dtfCache = new Map();
+      const cacheKey = `${this.timezone}:${includeDate}:${includeTime}:${includeSeconds}`;
+      let formatter = this._dtfCache.get(cacheKey);
+      if (!formatter) {
+        formatter = new Intl.DateTimeFormat("zh-TW", {
+          ...(includeDate ? { year: "numeric", month: "2-digit", day: "2-digit" } : {}),
+          ...(includeTime
+            ? { hour: "2-digit", minute: "2-digit", ...(includeSeconds ? { second: "2-digit" } : {}) }
+            : {}),
+          timeZone: this.timezone,
+          hour12: false,
+        });
+        this._dtfCache.set(cacheKey, formatter);
+      }
 
       let result = formatter.format(date).replace(/\//g, "-");
 

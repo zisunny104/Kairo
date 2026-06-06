@@ -427,7 +427,10 @@ class BoardPageManager {
     this.experimentStartedAt = 0;
 
     const resetDelay = this.configManager?.userSettings?.postExperimentResetDelayMs ?? 5000;
-    setTimeout(() => this.gestureUtils?.resetGestureSequence(), resetDelay);
+    setTimeout(() => {
+      this.gestureUtils?.resetGestureSequence();
+      this.recordManager?.view?.resetLiveDisplayToIdle?.();
+    }, resetDelay);
 
     // EXP_END 狀態日誌由 ExperimentSystemManager._handleFlowStopped 統一記錄（同步執行）
     // flushAll() 由 stopExperiment() 在 stopFlowExperiment() 之後負責呼叫（確保 EXP_END 先寫入）
@@ -456,7 +459,10 @@ class BoardPageManager {
     this.experimentStartedAt = 0;
 
     const resetDelay = this.configManager?.userSettings?.postExperimentResetDelayMs ?? 5000;
-    setTimeout(() => this.gestureUtils?.resetGestureSequence(), resetDelay);
+    setTimeout(() => {
+      this.gestureUtils?.resetGestureSequence();
+      this.recordManager?.view?.resetLiveDisplayToIdle?.();
+    }, resetDelay);
 
     // EXP_END 由 ExperimentSystemManager._handleFlowStopped 同步寫入（COMPLETED 映射到該方法），
     // 計時器也由同一路徑停止；此處只負責 flushAll()，確保自然完成路徑也能持久化到 JSONL

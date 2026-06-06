@@ -835,8 +835,13 @@ class ExperimentSystemManager {
    * 處理實驗開始事件
    * @private
    */
-  _handleExperimentStart() {
-    this.startExperiment();
+  async _handleExperimentStart() {
+    try {
+      await this.startExperiment();
+    } catch (error) {
+      Logger.error("實驗開始失敗:", error);
+      return;
+    }
     Logger.debug("實驗開始 - 透過 ExperimentSystemManager");
     this.uiManager._handleExperimentStart();
   }
@@ -1093,7 +1098,7 @@ class ExperimentSystemManager {
 
     if (isSync) {
       try {
-        const hubId = await hubManager.getExperimentId();
+        const hubId = hubManager.getExperimentId();
         const currentId = this.getExperimentId();
         if (hubId) {
           if (currentId !== hubId) {

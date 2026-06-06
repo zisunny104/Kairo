@@ -73,7 +73,7 @@ export function buildBoardGestureScript({
       (u) => u.unit_id === firstUnitId,
     );
 
-    if (firstUnitIndexInJson > 0 && nextGesture) {
+    if (firstUnitIndexInJson > 0 && nextGesture && firstUnit) {
       pushGesture(nextGesture, {
         reason: `[num6] x${firstUnitIndexInJson} | 導航至「${firstUnit.unit_name}」 | 列表 -> ${firstUnitId}`,
         step_id: "FIRST_UNIT_NAV",

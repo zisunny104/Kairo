@@ -242,13 +242,13 @@ class SyncConfirmDialogManager {
       confirmBtn.disabled = true;
       confirmBtn.textContent = "驗證中...";
 
-      // 取得 SyncClient 實例進行最終驗證
-      const syncClient = this.syncClientProvider?.();
-      if (!syncClient) {
-        throw new Error("SyncClient 未設定");
-      }
-
       try {
+        // 取得 SyncClient 實例進行最終驗證（在 try 內，確保失敗時能還原按鈕）
+        const syncClient = this.syncClientProvider?.();
+        if (!syncClient) {
+          throw new Error("SyncClient 未設定");
+        }
+
         const result = await syncClient.getShareCodeInfo(editedCode);
 
         // 還原按鈕狀態

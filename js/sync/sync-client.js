@@ -93,22 +93,24 @@ class SyncClient {
    * 設定全域事件處理器
    */
   setupGlobalEventHandlers() {
-    window.addEventListener(
-      SYNC_EVENTS.WEBSOCKET_SESSION_INVALID,
-      (event) => {
-        const { reason, originalError } = event.detail;
-        Logger.warn("收到全域工作階段失效事件", { reason, originalError });
+    // 先移除舊的 handler（防止每次重新初始化時重複累積）
+    if (this._sessionInvalidHandler) {
+      window.removeEventListener(SYNC_EVENTS.WEBSOCKET_SESSION_INVALID, this._sessionInvalidHandler);
+    }
+    this._sessionInvalidHandler = (event) => {
+      const { reason, originalError } = event.detail;
+      Logger.warn("收到全域工作階段失效事件", { reason, originalError });
 
-        this.sessionInvalid = true;
-        this.clearInvalidSessionData();
+      this.sessionInvalid = true;
+      this.clearInvalidSessionData();
 
-        window.dispatchEvent(
-          new CustomEvent(SYNC_EVENTS.SESSION_INVALID, {
-            detail: { reason, originalError },
-          }),
-        );
-      },
-    );
+      window.dispatchEvent(
+        new CustomEvent(SYNC_EVENTS.SESSION_INVALID, {
+          detail: { reason, originalError },
+        }),
+      );
+    };
+    window.addEventListener(SYNC_EVENTS.WEBSOCKET_SESSION_INVALID, this._sessionInvalidHandler);
   }
 
   /**

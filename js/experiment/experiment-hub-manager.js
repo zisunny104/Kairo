@@ -532,13 +532,17 @@ class ExperimentHubManager extends EventEmitter {
     const checkInterval = setInterval(() => {
       if (this.syncClient || this.syncManager?.core?.syncClient) {
         clearInterval(checkInterval);
-        this.onSyncClientReady();
+        if (!this.syncClientReady) this.onSyncClientReady();
       }
     }, EXPERIMENT_HUB_CONSTANTS.DEFAULTS.SYNC_CLIENT_READY_POLL_INTERVAL_MS);
 
     setTimeout(() => {
       clearInterval(checkInterval);
-      if (!this.syncClientReady) {
+      if (this.syncClientReady) return;
+      // timeout 清除 interval 後補做一次最終檢查，防止競爭視窗內錯過就緒訊號
+      if (this.syncClient || this.syncManager?.core?.syncClient) {
+        this.onSyncClientReady();
+      } else {
         Logger.warn("SyncClient 就緒超時");
       }
     }, EXPERIMENT_HUB_CONSTANTS.DEFAULTS.SYNC_CLIENT_READY_TIMEOUT_MS);

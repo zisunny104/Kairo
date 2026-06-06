@@ -13,6 +13,13 @@ import { SYNC_EVENTS, SYNC_ROLE_CONFIG } from "../constants/index.js";
 import { Logger } from "./console-manager.js";
 import { WS_PROTOCOL } from "../../shared/ws-protocol-constants.js";
 
+// 高頻訊息類型集合（模組層級常數，避免每則訊息重新分配）
+const HIGH_FREQUENCY_TYPES = new Set([
+  WS_PROTOCOL.S2C.HEARTBEAT_ACK,
+  WS_PROTOCOL.S2C.SESSION_STATE_UPDATE,
+  WS_PROTOCOL.S2C.STATE_UPDATE_ACK,
+]);
+
 class WebSocketClient {
   /**
    * 建立 WebSocketClient。
@@ -280,12 +287,7 @@ class WebSocketClient {
         this._lastSeq = seq;
       }
 
-      const highFrequencyTypes = new Set([
-        WS_PROTOCOL.S2C.HEARTBEAT_ACK,
-        WS_PROTOCOL.S2C.SESSION_STATE_UPDATE,
-        WS_PROTOCOL.S2C.STATE_UPDATE_ACK,
-      ]);
-      if (highFrequencyTypes.has(type)) {
+      if (HIGH_FREQUENCY_TYPES.has(type)) {
         Logger.debug(`[WebSocketClient] 收到訊息 [${type}]`);
       } else {
         Logger.debug(`[WebSocketClient] 收到訊息 [${type}]:`, data);
