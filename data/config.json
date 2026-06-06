@@ -1,10 +1,10 @@
 {
-    "version": "2.6.c436684",
+    "version": "2.6.c906572",
     "description": "虛擬操作面板實驗設定檔",
     "author": "謝祥紫、Github Copilot",
     "created_at": "2024-07-16T10:00:00Z",
-    "updated_at": "2026-05-13 上午03:29:42.000Z",
-    "git_commit_hash": "c436684",
+    "updated_at": "2026-06-06 下午09:38:26.000Z",
+    "git_commit_hash": "c906572",
     "media_base_path": "assets/",
     "settings": {
         "mainScale": 1.29,
