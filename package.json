@@ -1,7 +1,7 @@
 {
     "type": "module",
     "name": "kairo",
-    "version": "2.6.c906572",
+    "version": "2.7.cab1de5",
     "description": "機台操作面板與實驗設定",
     "main": "index.html",
     "scripts": {
@@ -11,7 +11,8 @@
         "version:update": "node scripts/update-version.js all",
         "version:status": "node scripts/update-version.js status",
         "version:hash": "node scripts/update-version.js hash",
-        "version:version": "node scripts/update-version.js version",
+        "version:bump-minor": "node scripts/update-version.js bump-minor",
+        "version:bump-major": "node scripts/update-version.js bump-major",
         "lint": "eslint \"js/**/*.js\" --fix",
         "verify:contracts": "node scripts/verify_experiment_contracts.js",
         "verify:resilience": "node scripts/verify_experiment_resilience.js"

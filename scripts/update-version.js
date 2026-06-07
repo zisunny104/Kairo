@@ -125,20 +125,22 @@ function updateGitCommitHash() {
 }
 
 /**
- * 更新版本號
+ * 解析版本號，回傳 { major, minor }
  */
-function updateVersion() {
+function parseVersion(version) {
+  const parts = String(version || "1.0").split(".");
+  return {
+    major: parseInt(parts[0]) || 1,
+    minor: parseInt(parts[1]) || 0,
+  };
+}
+
+/**
+ * 將新版本號寫入 config.json 與 package.json
+ */
+function applyVersion(newVersion) {
   const config = readConfig();
   const currentVersion = config.version;
-
-  // 簡單的版本號遞增邏輯（你可以修改這個邏輯）
-  const versionParts = currentVersion.split(".");
-  const major = parseInt(versionParts[0]) || 1;
-  const minor = parseInt(versionParts[1]) || 1;
-
-  // 使用 git commit hash 作為 patch 版本
-  const gitHash = getGitCommitHash();
-  const newVersion = `${major}.${minor}.${gitHash}`;
 
   if (currentVersion === newVersion) {
     console.log(`版本號無變化: ${currentVersion}`);
@@ -147,7 +149,6 @@ function updateVersion() {
 
   console.log(`更新版本號: ${currentVersion} → ${newVersion}`);
   config.version = newVersion;
-  // 使用設定檔中的時區設定
   const timezone = config.timezone || "Asia/Taipei";
   config.updated_at =
     new Date()
@@ -161,7 +162,6 @@ function updateVersion() {
         second: "2-digit",
       })
       .replace(/\//g, "-") + ".000Z";
-
   writeConfig(config);
 
   const packageJson = readPackageJson();
@@ -169,8 +169,40 @@ function updateVersion() {
     packageJson.version = newVersion;
     writePackageJson(packageJson);
   }
-
   return true;
+}
+
+/**
+ * 更新版本號（hash patch，major.minor 不變）
+ */
+function updateVersion() {
+  const config = readConfig();
+  const { major, minor } = parseVersion(config.version);
+  const gitHash = getGitCommitHash();
+  if (!gitHash) { console.error("無法取得 git commit hash"); process.exit(1); }
+  return applyVersion(`${major}.${minor}.${gitHash}`);
+}
+
+/**
+ * 次版本號 +1，patch 更新為當前 hash
+ */
+function bumpMinor() {
+  const config = readConfig();
+  const { major, minor } = parseVersion(config.version);
+  const gitHash = getGitCommitHash();
+  if (!gitHash) { console.error("無法取得 git commit hash"); process.exit(1); }
+  return applyVersion(`${major}.${minor + 1}.${gitHash}`);
+}
+
+/**
+ * 主版本號 +1，次版本號歸零，patch 更新為當前 hash
+ */
+function bumpMajor() {
+  const config = readConfig();
+  const { major } = parseVersion(config.version);
+  const gitHash = getGitCommitHash();
+  if (!gitHash) { console.error("無法取得 git commit hash"); process.exit(1); }
+  return applyVersion(`${major + 1}.0.${gitHash}`);
 }
 
 /**
@@ -184,16 +216,18 @@ function showHelp() {
   node scripts/update-version.js [command]
 
 命令:
-  hash        更新 git commit hash
-  version     更新版本號
-  all         更新 hash 和版本號
-  status      顯示目前狀態
+  hash          更新 git commit hash（版本號不變）
+  version       更新 patch（hash），major.minor 不變
+  bump-minor    次版本號 +1（2.6.X → 2.7.X）
+  bump-major    主版本號 +1，次版本號歸零（2.6.X → 3.0.X）
+  all           更新 hash 和 patch 版本
+  status        顯示目前狀態
 
 範例:
-  node scripts/update-version.js hash
+  node scripts/update-version.js bump-minor
+  node scripts/update-version.js bump-major
   node scripts/update-version.js version
   node scripts/update-version.js all
-  node scripts/update-version.js status
 `);
 }
 
@@ -221,13 +255,18 @@ switch (command) {
   case "version":
     updateVersion();
     break;
-  case "all":
+  case "bump-minor":
+    bumpMinor();
+    break;
+  case "bump-major":
+    bumpMajor();
+    break;
+  case "all": {
     const hashUpdated = updateGitCommitHash();
     const versionUpdated = updateVersion();
-    if (!hashUpdated && !versionUpdated) {
-      console.log("所有項目都是最新的");
-    }
+    if (!hashUpdated && !versionUpdated) console.log("所有項目都是最新的");
     break;
+  }
   case "status":
     showStatus();
     break;
