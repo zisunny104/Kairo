@@ -1,5 +1,5 @@
 /**
- * archive-constants.js — 純常數、純函式、ArchiveFileState class
+ * archive-constants.js — 共用常數、工具函式與 ArchiveFileState
  */
 
 import { Logger } from "../core/console-manager.js";
@@ -64,7 +64,7 @@ export function getTypeColor(entry) {
   return TYPE_COLORS[entry.type] ?? TYPE_COLORS._default;
 }
 
-// ── 純函式 ────────────────────────────────────────────────────────────────────
+// ── 工具函式 ──────────────────────────────────────────────────────────────────
 
 export function parseJsonl(text) {
   return text.split("\n")

@@ -24,7 +24,7 @@ class ArchivePageManager {
     this._expandedSteps = new Set();
     this._tsPopupKeyHandler   = null;
     this._typePopupKeyHandler = null;
-    this._remarkState = this._defaultRemarkState(); // 此方法由 archiveRemarkMethods 提供
+    this._remarkState = this._defaultRemarkState();
     // 參考資料（ID → 可讀名稱）
     this._gestureMap  = {};
     this._stepMap     = {};

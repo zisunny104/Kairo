@@ -7,17 +7,25 @@ import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 import { Logger } from "../utils/logger.js";
-import { ADMIN_TOKEN } from "../config/server.js";
+import { ADMIN_TOKEN, ARCHIVE_PROTECTED } from "../config/server.js";
 
 const router = express.Router();
 
 function requireAdminToken(req, res, next) {
+  if (!ARCHIVE_PROTECTED) return next();
   const token = req.headers["x-admin-token"];
-  if (!token || token !== ADMIN_TOKEN) {
+  if (!token) return res.status(401).json({ success: false, error: "需要管理員授權" });
+  if (token !== ADMIN_TOKEN) {
     Logger.warn(`record 管理端點未授權存取 | ip=${req.ip} | path=${req.path}`);
-    return res.status(403).json({ success: false, error: "需要管理員授權" });
+    return res.status(403).json({ success: false, error: "授權失敗" });
   }
   next();
+}
+
+const SAFE_FILENAME_RE = /^[a-zA-Z0-9_\-\.]+\.jsonl$/;
+
+function validateFilename(filename) {
+  return typeof filename === "string" && SAFE_FILENAME_RE.test(path.basename(filename));
 }
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -42,7 +50,7 @@ async function ensureLogDir() {
  * GET /api/record/list
  * 列出所有日誌檔案
  */
-router.get("/list", async (req, res) => {
+router.get("/list", requireAdminToken, async (req, res) => {
   try {
     await ensureLogDir();
 
@@ -99,8 +107,8 @@ router.post("/save", async (req, res) => {
 
     // 防止路徑遍歷，並驗證副檔名
     const safeFilename = path.basename(filename);
-    if (!safeFilename.endsWith(".jsonl")) {
-      return res.status(400).json({ success: false, error: "檔案副檔名必須為 .jsonl" });
+    if (!validateFilename(filename)) {
+      return res.status(400).json({ success: false, error: "檔名格式無效（僅允許英數字、底線、連字號，副檔名須為 .jsonl）" });
     }
 
     // 限制內容大小
@@ -135,7 +143,7 @@ router.post("/save", async (req, res) => {
  * GET /api/record/read/:filename
  * 讀取日誌檔案
  */
-router.get("/read/:filename", async (req, res) => {
+router.get("/read/:filename", requireAdminToken, async (req, res) => {
   try {
     const { filename } = req.params;
 
@@ -148,8 +156,8 @@ router.get("/read/:filename", async (req, res) => {
 
     // 防止路徑遍歷，並驗證副檔名
     const safeFilename = path.basename(filename);
-    if (!safeFilename.endsWith(".jsonl")) {
-      return res.status(400).json({ success: false, error: "檔案副檔名必須為 .jsonl" });
+    if (!validateFilename(filename)) {
+      return res.status(400).json({ success: false, error: "檔名格式無效（僅允許英數字、底線、連字號，副檔名須為 .jsonl）" });
     }
     const filepath = path.join(LOGS_DIR, safeFilename);
 
@@ -198,8 +206,8 @@ router.patch("/update-participant/:filename", requireAdminToken, async (req, res
     }
 
     const safeFilename = path.basename(filename);
-    if (!safeFilename.endsWith(".jsonl")) {
-      return res.status(400).json({ success: false, error: "檔案副檔名必須為 .jsonl" });
+    if (!validateFilename(filename)) {
+      return res.status(400).json({ success: false, error: "檔名格式無效（僅允許英數字、底線、連字號，副檔名須為 .jsonl）" });
     }
     const filepath = path.join(LOGS_DIR, safeFilename);
 
@@ -255,8 +263,8 @@ router.delete("/delete/:filename", requireAdminToken, async (req, res) => {
 
     // 防止路徑遍歷，並驗證副檔名
     const safeFilename = path.basename(filename);
-    if (!safeFilename.endsWith(".jsonl")) {
-      return res.status(400).json({ success: false, error: "檔案副檔名必須為 .jsonl" });
+    if (!validateFilename(filename)) {
+      return res.status(400).json({ success: false, error: "檔名格式無效（僅允許英數字、底線、連字號，副檔名須為 .jsonl）" });
     }
     const filepath = path.join(LOGS_DIR, safeFilename);
 

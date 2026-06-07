@@ -1,5 +1,5 @@
 /**
- * archive-sidebar.js — 伺服器/本機檔案管理方法模組
+ * archive-sidebar.js — 伺服器/本機檔案管理
  */
 
 import { Logger } from "../core/console-manager.js";

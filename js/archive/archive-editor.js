@@ -1,5 +1,5 @@
 /**
- * archive-editor.js — 彈出框編輯器方法模組
+ * archive-editor.js — 時間戳、類型、標記欄編輯彈出框
  */
 
 import { ICON, ATTEMPT_ICON, ATTEMPT_COLOR, TYPE_COLORS, escapeHtml } from "./archive-constants.js";

@@ -1,5 +1,10 @@
 /* ================= 動畫定義 ================= */
 
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.5; }
+}
+
 @keyframes pulse-blue {
     0% {
         box-shadow: 0 0 8px rgba(0, 0, 255, 0.7);

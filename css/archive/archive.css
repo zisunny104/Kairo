@@ -23,6 +23,10 @@ body.archive-page {
   position: relative;
 }
 
+.archive-sidebar .board-section {
+  gap: 6px;
+}
+
 .archive-sidebar {
   flex: 0 0 40%;
   border-right: 2px solid #e0e0e0;
@@ -100,10 +104,15 @@ body.archive-page {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
 }
 
 .archive-section-row h2 { margin: 0; }
+
+.archive-section-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
 
 .archive-icon-btn {
   display: flex;

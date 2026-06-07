@@ -175,35 +175,37 @@ class RecordView {
             </button>
             <input type="text" id="recordSearchInput" class="records-search-input" placeholder="搜尋檔案名稱…" aria-label="搜尋檔案名稱">
           </div>
-          <button id="refreshRecordsBtn" class="btn-secondary" data-action="refresh-records" title="重新整理" aria-label="重新整理">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="icon-sm">
-              <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
-              <path d="M21 3v5h-5"/>
-              <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
-              <path d="M3 21v-5h5"/>
-            </svg>
-          </button>
-          <button id="recordFilterToggleBtn" class="btn-secondary" data-action="toggle-filter" title="篩選" aria-label="篩選">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="icon-sm">
-              <path d="M3 4h18"/><path d="M6 10h12"/><path d="M10 16h4"/>
-            </svg>
-          </button>
-          <span id="recordsBatchCount" class="records-batch-count is-hidden"></span>
-          <button id="downloadSelectedRecordsBtn" class="btn-secondary is-hidden" data-action="download-selected" title="下載選取" aria-label="下載選取">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="icon-sm">
-              <path d="M3 17v2a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2"/>
-              <polyline points="8 12 12 16 16 12"/>
-              <line x1="12" y1="3" x2="12" y2="16"/>
-            </svg>
-          </button>
-          <button id="deleteSelectedRecordsBtn" class="btn-danger is-hidden" data-action="delete-selected" title="刪除選取" aria-label="刪除選取">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="icon-sm">
-              <polyline points="3 6 5 6 21 6"/>
-              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-              <path d="M10 11v6M14 11v6"/>
-              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
-            </svg>
-          </button>
+          <div class="records-toolbar-right">
+            <button id="refreshRecordsBtn" class="btn-secondary" data-action="refresh-records" title="重新整理" aria-label="重新整理">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="icon-sm">
+                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+                <path d="M21 3v5h-5"/>
+                <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+                <path d="M3 21v-5h5"/>
+              </svg>
+            </button>
+            <button id="recordFilterToggleBtn" class="btn-secondary" data-action="toggle-filter" title="篩選" aria-label="篩選">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="icon-sm">
+                <path d="M3 4h18"/><path d="M6 10h12"/><path d="M10 16h4"/>
+              </svg>
+            </button>
+            <span id="recordsBatchCount" class="records-batch-count is-hidden"></span>
+            <button id="downloadSelectedRecordsBtn" class="btn-secondary is-hidden" data-action="download-selected" title="下載選取" aria-label="下載選取">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="icon-sm">
+                <path d="M3 17v2a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2"/>
+                <polyline points="8 12 12 16 16 12"/>
+                <line x1="12" y1="3" x2="12" y2="16"/>
+              </svg>
+            </button>
+            <button id="deleteSelectedRecordsBtn" class="btn-danger is-hidden" data-action="delete-selected" title="刪除選取" aria-label="刪除選取">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="icon-sm">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                <path d="M10 11v6M14 11v6"/>
+                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
 

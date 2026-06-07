@@ -9,7 +9,7 @@
 .archive-file-card {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
     background: #ffffff;
     border: 2px solid #e0e0e0;
     border-radius: 6px;
@@ -42,9 +42,10 @@
 /* ── 卡片動作按鈕群組 ── */
 .file-card-actions {
     display: flex;
-    gap: 6px;
+    gap: 4px;
     margin-left: auto;
     flex-shrink: 0;
+    padding-right: 2px;
 }
 
 /* ── 單個動作按鈕 ── */

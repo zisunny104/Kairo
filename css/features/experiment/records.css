@@ -131,12 +131,17 @@
 .records-list-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     background: transparent;
     border-radius: 4px;
     font-weight: 600;
     font-size: 13px;
-    gap: 6px;
+    gap: 4px;
+}
+
+.records-toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 4px;
 }
 
 /* 覆蓋尺寸與對齊；.btn-secondary 其餘屬性由 components/general-buttons.css 定義 */
@@ -181,7 +186,7 @@
 
 /* 日誌項目 */
 .record-item {
-    padding: 0.5rem 1rem;
+    padding: 0.5rem 0.625rem;
     flex-wrap: wrap;
     position: relative;
     margin-bottom: 0.375rem;
@@ -254,155 +259,6 @@
 }
 
 /* 日誌列表記錄數篩選小窗 */
-.record-filter-popover {
-    position: fixed;
-    top: 0;
-    left: 0;
-    min-width: 220px;
-    background: #ffffff;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    padding: 10px 12px;
-    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.12);
-    z-index: 20;
-}
-
-.record-filter-popover.is-hidden {
-    display: none;
-}
-
-.record-filter-title {
-    font-size: 12px;
-    font-weight: 700;
-    color: #2c3e50;
-    margin-bottom: 6px;
-}
-
-.record-filter-block+.record-filter-block {
-    margin-top: 10px;
-}
-
-.record-filter-values {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    font-size: 12px;
-    color: #4a4a4a;
-    margin-bottom: 6px;
-}
-
-.record-filter-sliders {
-    position: relative;
-    height: 26px;
-    --range-start: 0%;
-    --range-end: 100%;
-}
-
-.record-filter-sliders input[type="range"] {
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: 4px;
-    width: 100%;
-    margin: 0;
-    background: transparent;
-    appearance: none;
-    height: 26px;
-}
-
-.record-filter-sliders::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: 12px;
-    height: 6px;
-    border-radius: 999px;
-    background: #e4e7f5;
-}
-
-.record-filter-sliders::after {
-    content: "";
-    position: absolute;
-    top: 12px;
-    height: 6px;
-    border-radius: 999px;
-    background: #667eea;
-    left: var(--range-start);
-    right: calc(100% - var(--range-end));
-}
-
-.record-filter-sliders input[type="range"]::-webkit-slider-runnable-track {
-    height: 6px;
-    background: transparent;
-    border: none;
-}
-
-.record-filter-sliders input[type="range"]::-webkit-slider-thumb {
-    appearance: none;
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    background: #ffffff;
-    border: 2px solid #667eea;
-    box-shadow: 0 2px 6px rgba(102, 126, 234, 0.35);
-    margin-top: -4px;
-}
-
-.record-filter-sliders input[type="range"]::-moz-range-track {
-    height: 6px;
-    background: transparent;
-    border: none;
-}
-
-.record-filter-sliders input[type="range"]::-moz-range-thumb {
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    background: #ffffff;
-    border: 2px solid #667eea;
-    box-shadow: 0 2px 6px rgba(102, 126, 234, 0.35);
-}
-
-.record-filter-sliders .range-min {
-    z-index: 2;
-}
-
-.record-filter-sliders .range-max {
-    z-index: 3;
-}
-
-.record-filter-sliders .range-max {
-    pointer-events: none;
-}
-
-.record-filter-sliders .range-max::-webkit-slider-thumb {
-    pointer-events: auto;
-}
-
-.record-filter-sliders .range-max::-moz-range-thumb {
-    pointer-events: auto;
-}
-
-.record-filter-sliders input[type="range"]::-webkit-slider-thumb,
-.record-filter-sliders input[type="range"]::-moz-range-thumb {
-    cursor: pointer;
-}
-
-.record-filter-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 6px;
-    margin-top: 8px;
-}
-
-.record-filter-actions .btn-secondary,
-.record-filter-actions .btn-primary {
-    height: 30px;
-    padding: 0 10px;
-    font-size: 12px;
-}
 
 .record-filter-summary {
     display: flex;
@@ -840,8 +696,7 @@
 #recordsList .records-list-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 6px;
+    gap: 4px;
     background: transparent;
     border-radius: 4px;
     font-weight: 600;

@@ -17,6 +17,10 @@ dotenv.config({ path: resolve(__dirname, "../.env") });
 export const ADMIN_TOKEN =
   process.env.ADMIN_TOKEN || crypto.randomBytes(16).toString("hex");
 
+// 檔案庫保護模式：設定 ARCHIVE_PROTECTED=true 才要求管理員授權
+// 預設為開放模式（false），適合本地端研究環境
+export const ARCHIVE_PROTECTED = process.env.ARCHIVE_PROTECTED === "true";
+
 export const SERVER_CONFIG = {
   // 環境設定
   nodeEnv: process.env.NODE_ENV || "development",

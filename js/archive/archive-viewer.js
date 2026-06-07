@@ -1,5 +1,5 @@
 /**
- * archive-viewer.js — 內容渲染方法模組
+ * archive-viewer.js — 內容渲染
  */
 
 import {

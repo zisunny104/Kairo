@@ -1,5 +1,5 @@
 /**
- * archive-remark.js — 重新標記模式方法模組
+ * archive-remark.js — 重新標記模式
  */
 
 import {

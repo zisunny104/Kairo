@@ -26,19 +26,27 @@
       <div class="input-section board-section" id="serverFilesSection">
         <div class="archive-section-row">
           <h2>伺服器日誌</h2>
-          <button class="archive-icon-btn" id="serverSearchToggleBtn" title="搜尋">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-              stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-          </button>
-          <button class="archive-icon-btn" id="refreshServerBtn" title="重新整理">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-              stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
-              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-            </svg>
-          </button>
+          <div class="archive-section-actions">
+            <button class="archive-icon-btn" id="serverSearchToggleBtn" title="搜尋">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+            </button>
+            <button class="archive-icon-btn" id="serverFilterToggleBtn" title="篩選">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 4h18"/><path d="M6 10h12"/><path d="M10 16h4"/>
+              </svg>
+            </button>
+            <button class="archive-icon-btn" id="refreshServerBtn" title="重新整理">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+              </svg>
+            </button>
+          </div>
         </div>
         <div id="serverFilesList"><div class="archive-status">載入中…</div></div>
       </div>
