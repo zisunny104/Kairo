@@ -184,7 +184,6 @@ export const archiveRemarkMethods = {
     }
 
     const totalFiles = 1 + rs.importedFiles.length;
-    const hasSrcSel  = rs.selectedSrcEntries.size > 0;
 
     return items.map(item => {
       if (item.isNewMark) {
@@ -197,7 +196,6 @@ export const archiveRemarkMethods = {
           <span class="remark-track-time">${fmtRel(item.relMs)}</span>
           <span class="remark-track-label">待指派</span>
           <span class="remark-track-actions">
-            ${hasSrcSel ? `<button class="remark-assign-sel" data-remark="assign-selected" data-mark-idx="${i}">指派所選</button>` : ""}
             ${isSel && canOp ? `<button class="remark-mark-continue" data-remark="continue-from-mark" data-mark-idx="${i}">由此繼續</button>` : ""}
             <button class="remark-mark-del" data-mark-idx="${i}">×</button>
           </span>
@@ -212,17 +210,21 @@ export const archiveRemarkMethods = {
         item.entry.a_id   || null,
         item.entry.g_type ? (GESTURE_ATTEMPT_TYPE_LABELS[item.entry.g_type] ?? item.entry.g_type) : null,
       ].filter(Boolean).join(" · ");
-      const srcNum    = totalFiles > 1 ? item.sourceIdx + 1 : null;
-      const isDraggable = item.entryFileIdx != null; // 只有原始檔事件可拖曳
-      const isSrcSel  = isDraggable && rs.selectedSrcEntries.has(item.entryFileIdx);
+      const srcNum      = totalFiles > 1 ? item.sourceIdx + 1 : null;
+      const isDraggable = item.entryFileIdx != null;
+      const isSrcSel    = isDraggable && rs.selectedSrcEntries.has(item.entryFileIdx);
+      const _curEntry   = isDraggable ? this._file?.entries[item.entryFileIdx] : null;
+      const _origEntry  = _curEntry?._origIdx != null ? this._file?._original[_curEntry._origIdx] : null;
+      const isEdited    = isDraggable && _origEntry != null && _origEntry.ts !== _curEntry.ts;
       const fileIdxAttr = isDraggable ? ` data-entry-file-idx="${item.entryFileIdx}"` : "";
-      return `<div class="remark-track-card remark-track-card--src${isSrcSel ? " is-selected" : ""}"
+      return `<div class="remark-track-card remark-track-card--src${isSrcSel ? " is-selected" : ""}${isEdited ? " is-edited" : ""}"
                    ${fileIdxAttr}${isDraggable ? ' draggable="true"' : ""}
                    data-rel-ms="${item.relMs ?? -1}">
         <span class="remark-track-source" style="background:${color}">${srcNum != null ? srcNum : "·"}</span>
         <span class="remark-track-time">${item.relMs != null ? fmtRel(item.relMs) : "—"}</span>
         <span class="remark-track-label">${escapeHtml(label)}</span>
         ${detail ? `<span class="remark-track-detail">${escapeHtml(detail)}</span>` : ""}
+        ${isDraggable ? `<span class="remark-track-actions"><button class="remark-src-del" data-src-del-idx="${item.entryFileIdx}">×</button></span>` : ""}
       </div>`;
     }).join("");
   },
@@ -275,10 +277,17 @@ export const archiveRemarkMethods = {
       this._remarkState.importPanelOpen = !this._remarkState.importPanelOpen;
       this._renderAll();
     });
-    on("[data-remark='assign-selected']", "click", e => {
-      e.stopPropagation();
-      this._assignMarkToSelectedEntries(parseInt(e.currentTarget.dataset.markIdx));
-    });
+    viewer.querySelectorAll(".remark-src-del").forEach(btn =>
+      btn.addEventListener("click", e => {
+        e.stopPropagation();
+        const idx = parseInt(btn.dataset.srcDelIdx);
+        if (isNaN(idx) || !this._file) return;
+        this._file.removeEntry(idx);
+        this._remarkState.selectedSrcEntries.clear();
+        this._remarkState.selectedMarkIdx = null;
+        this._renderAll();
+      })
+    );
 
     viewer.querySelector("#remark-show-original")?.addEventListener("change", e => {
       this._remarkState.showOriginalInWorkspace = e.target.checked;
@@ -322,7 +331,11 @@ export const archiveRemarkMethods = {
     // 拖曳：原始事件卡片
     viewer.querySelectorAll(".remark-track-card--src[draggable='true']").forEach(card => {
       card.addEventListener("dragstart", e => {
-        e.dataTransfer.setData("text/plain", card.dataset.entryFileIdx);
+        const entryFileIdx = parseInt(card.dataset.entryFileIdx);
+        const relMs        = parseFloat(card.dataset.relMs);
+        const sel          = this._remarkState.selectedSrcEntries;
+        const isMultiDrag  = sel.has(entryFileIdx) && sel.size > 1;
+        e.dataTransfer.setData("text/plain", JSON.stringify({ entryFileIdx, relMs, isMultiDrag }));
         e.dataTransfer.effectAllowed = "move";
       });
     });
@@ -333,9 +346,13 @@ export const archiveRemarkMethods = {
       card.addEventListener("dragleave", () => card.classList.remove("drag-over"));
       card.addEventListener("drop", e => {
         e.preventDefault(); card.classList.remove("drag-over");
-        const entryIdx = parseInt(e.dataTransfer.getData("text/plain"));
-        const markIdx  = parseInt(card.dataset.dropMarkIdx);
-        if (!isNaN(entryIdx) && !isNaN(markIdx)) this._assignMarkToEntryIdx(markIdx, entryIdx);
+        let data;
+        try { data = JSON.parse(e.dataTransfer.getData("text/plain")); } catch { return; }
+        const { entryFileIdx, relMs: anchorRelMs, isMultiDrag } = data;
+        const markIdx = parseInt(card.dataset.dropMarkIdx);
+        if (isNaN(entryFileIdx) || isNaN(markIdx)) return;
+        if (isMultiDrag) this._assignMarkToMultiDrag(markIdx, anchorRelMs);
+        else             this._assignMarkToEntryIdx(markIdx, entryFileIdx);
       });
     });
 
@@ -492,17 +509,21 @@ export const archiveRemarkMethods = {
     this._renderAll();
   },
 
-  _assignMarkToSelectedEntries(markIdx) {
+  _assignMarkToMultiDrag(markIdx, anchorRelMs) {
     const rs  = this._remarkState;
     const mark = rs.marks[markIdx];
     if (!mark || !this._file || rs.selectedSrcEntries.size === 0) return;
     const expStartTs = this._file.entries.find(e => e.type === "exp_start")?.ts ?? 0;
-    const newTs = expStartTs + mark.relMs;
+    const delta = mark.relMs - anchorRelMs;
     for (const idx of rs.selectedSrcEntries) {
-      this._file.applyEdit(idx, "ts", newTs, `標記點 ${markIdx + 1} 批次套用`);
+      const entry = this._file.entries[idx];
+      if (!entry || entry.ts == null) continue;
+      this._file.applyEdit(idx, "ts", entry.ts + delta, `標記點 ${markIdx + 1} 多選平移`);
     }
+    rs.marks.splice(markIdx, 1);
+    if (rs.selectedMarkIdx === markIdx) rs.selectedMarkIdx = null;
+    else if (rs.selectedMarkIdx != null && rs.selectedMarkIdx > markIdx) rs.selectedMarkIdx--;
     rs.selectedSrcEntries.clear();
-    rs.selectedMarkIdx = null;
     this._renderAll();
   },
 
@@ -555,7 +576,7 @@ export const archiveRemarkMethods = {
     // 簡單模式：整體時間基準設為標記點對應的絕對時間
     const title = `remark_${Date.now()}.jsonl`;
     const state = new ArchiveFileState({ id: `local:${title}`, title, source: "local", entries: newEntries });
-    this._localFiles.set(state.id, { name: title, content: newEntries.map(e => JSON.stringify(e)).join("\n") });
+    this._localFiles.set(state.id, { name: title, content: newEntries.map(e => JSON.stringify(ArchiveFileState._stripInternal(e))).join("\n") });
     this._renderLocalList();
     this._remarkState = this._defaultRemarkState();
     this._openState(state);
@@ -580,7 +601,7 @@ export const archiveRemarkMethods = {
     const merged = allEntries.sort((a, b) => (a.ts ?? 0) - (b.ts ?? 0));
     const title  = `merged_${Date.now()}.jsonl`;
     const state  = new ArchiveFileState({ id: `local:${title}`, title, source: "local", entries: merged });
-    this._localFiles.set(state.id, { name: title, content: merged.map(e => JSON.stringify(e)).join("\n") });
+    this._localFiles.set(state.id, { name: title, content: merged.map(e => JSON.stringify(ArchiveFileState._stripInternal(e))).join("\n") });
     this._renderLocalList();
     this._remarkState = this._defaultRemarkState();
     this._openState(state);

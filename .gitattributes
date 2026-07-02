@@ -1,0 +1,13 @@
+# 統一換行符，避免 Windows/macOS/Linux 之間 CRLF↔LF 造成整檔 diff 噪音。
+# 文字檔一律以 LF 存入 repo（工作區由各自平台自動轉換）。
+* text=auto eol=lf
+
+# 明確標記二進位檔，禁止任何換行符轉換。
+*.ico  binary
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.woff  binary
+*.woff2 binary
+*.db   binary

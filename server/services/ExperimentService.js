@@ -12,6 +12,7 @@ import { getDatabase } from "../database/connection.js";
 import { getValidCreateCode } from "../config/server.js";
 import { generateExperimentId } from "../utils/idGenerator.js";
 import { Logger } from "../utils/logger.js";
+import { safeEqual } from "../utils/safe-compare.js";
 
 export class ExperimentService {
   /**
@@ -27,7 +28,7 @@ export class ExperimentService {
 
     // 1. 驗證 createCode
     const validCreateCode = getValidCreateCode();
-    if (createCode !== validCreateCode) {
+    if (!validCreateCode || !safeEqual(createCode, validCreateCode)) {
       return {
         success: false,
         message: "建立代碼無效",

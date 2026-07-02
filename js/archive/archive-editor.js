@@ -13,9 +13,9 @@ export const archiveEditorMethods = {
     viewer.querySelectorAll("[data-mode]").forEach(btn =>
       btn.addEventListener("click", () => this._setViewMode(btn.dataset.mode))
     );
-    viewer.querySelector("[data-action='show-history']")?.addEventListener("click", e => {
-      e.stopPropagation(); this._showHistoryPopup(e.currentTarget);
-    });
+    viewer.querySelectorAll("[data-action='show-history']").forEach(el =>
+      el.addEventListener("click", e => { e.stopPropagation(); this._showHistoryPopup(e.currentTarget); })
+    );
     viewer.addEventListener("click", e => {
       if (!e.target.closest("#history-popup") && !e.target.closest("[data-action='show-history']"))
         document.getElementById("history-popup")?.remove();
@@ -26,6 +26,7 @@ export const archiveEditorMethods = {
     viewer.querySelectorAll("[data-action='revert']").forEach(el =>
       el.addEventListener("click", () => this._handleRevert()));
     viewer.querySelector("[data-action='upload']")?.addEventListener("click", () => this._uploadToServer(this._file));
+    viewer.querySelector("[data-action='save-file']")?.addEventListener("click", () => this._saveWithSuffix(this._file));
     viewer.querySelectorAll("[data-action='toggle-expand']").forEach(el => el.addEventListener("click", () => {
       const allKeys = [...viewer.querySelectorAll(".archive-step-card[data-step-key]")].map(c => c.dataset.stepKey);
       const allOpen = allKeys.every(k => this._expandedSteps.has(k));
@@ -42,30 +43,12 @@ export const archiveEditorMethods = {
       this._renderAll();
     });
 
-    // 時間軸全選
-    viewer.querySelector("#timelineSelectAll")?.addEventListener("change", e => {
-      const checked = e.target.checked;
-      viewer.querySelectorAll(".archive-tl-check").forEach(cb => { cb.checked = checked; });
-    });
-
-    // 時間軸個別勾選 → 更新全選狀態
-    viewer.addEventListener("change", e => {
-      if (!e.target.classList.contains("archive-tl-check")) return;
-      const all = [...viewer.querySelectorAll(".archive-tl-check")];
-      const master = viewer.querySelector("#timelineSelectAll");
-      if (!master) return;
-      const n = all.filter(c => c.checked).length;
-      master.checked = n === all.length;
-      master.indeterminate = n > 0 && n < all.length;
-    });
-
     // 摘要互動
     this._bindSummaryEvents(viewer, this._file);
 
     // 步驟收折
     viewer.querySelectorAll(".archive-step-header[data-step-key]").forEach(hdr =>
       hdr.addEventListener("click", e => {
-        if (e.target.classList.contains("archive-tl-check")) return;
         this._toggleStep(hdr.dataset.stepKey);
       })
     );

@@ -74,17 +74,23 @@ export const archiveViewerMethods = {
   _buildToolbarHtml() {
     const f = this._file;
     if (!f) return "";
-    const dirty     = f.isDirty ? `<span class="archive-toolbar-dirty">● 已編輯</span>` : "";
-    const undoCount = f.history.length;
-    const isLocal   = f.source === "local";
+    const dirty   = f.isDirty
+      ? `<button class="archive-toolbar-dirty" data-action="show-history" title="點按查看編輯記錄">● 已編輯</button>`
+      : "";
+    const saveBtn = f.isDirty
+      ? `<button class="archive-action-btn archive-action-btn--save" data-action="save-file" title="另存新檔（原始檔不變）">另存新檔</button>`
+      : "";
+    const isLocal = f.source === "local";
     return `<div class="archive-toolbar">
-      <span class="archive-toolbar-title">${escapeHtml(f.title)}${dirty}</span>
+      <span class="archive-toolbar-title">${escapeHtml(f.title)}</span>
+      ${dirty}
       <div class="archive-view-toggle">
         <button class="archive-view-btn${f.viewMode === "timeline" ? " is-active" : ""}" data-mode="timeline">時間軸</button>
         <button class="archive-view-btn${f.viewMode === "table"    ? " is-active" : ""}" data-mode="table">表格</button>
         <button class="archive-view-btn${f.viewMode === "raw"      ? " is-active" : ""}" data-mode="raw">原始</button>
       </div>
       <button class="archive-action-btn archive-action-btn--remark${f.viewMode === "remark" ? " is-active" : ""}" data-mode="remark">重新標記</button>
+      ${saveBtn}
       ${isLocal ? `<button class="archive-action-btn archive-action-btn--upload" data-action="upload">上傳至伺服器</button>` : ""}
     </div>`;
   },
@@ -150,10 +156,7 @@ export const archiveViewerMethods = {
     const isTimeline = f.viewMode === "timeline";
     const expandBtn = isTimeline
       ? `<button class="archive-count-btn" data-action="toggle-expand">${ICON.chevronDown} 展開全部</button>` : "";
-    const masterCheck = isTimeline
-      ? `<input type="checkbox" id="timelineSelectAll" class="archive-select-all" title="全選／全不選">` : "";
     const countBar = `<div class="archive-count-bar">
-      ${masterCheck}
       <span class="archive-entries-count">共 ${f.entries.length} 筆記錄${editInfo}${filterNote}</span>
       <div class="archive-filter-row">
         ${expandBtn}
@@ -334,7 +337,6 @@ export const archiveViewerMethods = {
         <div class="archive-tl-dot" style="background:${color.border}"></div>
         <div class="archive-top-card" style="border-color:${color.border}">
           <div class="archive-top-card-header">
-            <input type="checkbox" class="archive-tl-check" data-tl-id="${entry._idx ?? ""}">
             <span class="archive-top-badge" style="background:${color.bg};color:${color.text}">${escapeHtml(label)}</span>
             <span class="archive-top-time">${relTime(entry.ts)}</span>
           </div>
@@ -361,7 +363,6 @@ export const archiveViewerMethods = {
       <div class="archive-tl-dot" style="background:${mainColor.border}"></div>
       <div class="archive-top-card" style="border-color:${mainColor.border}">
         <div class="archive-top-card-header">
-          <input type="checkbox" class="archive-tl-check" data-tl-id="m-${events[0].ts ?? ""}">
           <span class="archive-top-time">${relTime(events[0].ts)}</span>
           <span class="archive-merged-count">${events.length} 筆同時</span>
         </div>
@@ -428,7 +429,6 @@ export const archiveViewerMethods = {
       <div class="archive-tl-dot" style="background:${cs.border};width:12px;height:12px;top:14px;left:-24px"></div>
       <div class="archive-step-card" data-step-key="${escapeHtml(key)}" style="border-color:${cs.border}">
         <div class="archive-step-header" data-step-key="${escapeHtml(key)}" style="background:${cs.bg}">
-          <input type="checkbox" class="archive-tl-check" data-tl-id="step-${escapeHtml(key)}">
           <span class="archive-step-num" style="background:${cs.accent}">${stepNum}</span>
           <div class="archive-step-label">
             <span class="archive-step-name">${escapeHtml(mainLabel)}</span>

@@ -166,6 +166,8 @@ export class ArchiveFileState {
     this.source = source;
     this._original = JSON.parse(JSON.stringify(entries));
     this.entries   = JSON.parse(JSON.stringify(entries));
+    this._original.forEach((e, i) => { e._origIdx = i; });
+    this.entries.forEach((e, i) => { e._origIdx = i; });
     this.history   = [];
     this.viewMode  = "timeline";
     this.isDirty   = false;
@@ -275,8 +277,19 @@ export class ArchiveFileState {
     ArchiveFileState.clearDraft(this.title);
   }
 
-  toOriginalJsonl() { return this._original.map(e => JSON.stringify(e)).join("\n") + "\n"; }
-  toEditedJsonl()   { return this.entries.map(e => JSON.stringify(e)).join("\n") + "\n"; }
+  commitAsOriginal() {
+    this._original = JSON.parse(JSON.stringify(this.entries));
+    this._original.forEach((e, i) => { e._origIdx = i; });
+    this.entries.forEach((e, i) => { e._origIdx = i; });
+    this.history  = [];
+    this.isDirty  = false;
+    ArchiveFileState.clearDraft(this.title);
+  }
+
+  static _stripInternal({ _origIdx, ...e }) { return e; }
+
+  toOriginalJsonl() { return this._original.map(e => JSON.stringify(ArchiveFileState._stripInternal(e))).join("\n") + "\n"; }
+  toEditedJsonl()   { return this.entries.map(e => JSON.stringify(ArchiveFileState._stripInternal(e))).join("\n") + "\n"; }
 
   _autoSave() {
     try {

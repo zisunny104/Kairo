@@ -69,7 +69,7 @@
 
 ### 首次設定
 
-> **重要**：以下所有指令都要在 `panel/` **根目錄**下執行，不是在 `server/` 裡面。
+> **重要**：以下所有指令都要在 `kairo/` **根目錄**下執行，不是在 `server/` 裡面。
 > `package.json` 位於根目錄，`server/` 只放後端程式碼。
 
 ```powershell
@@ -106,6 +106,7 @@ Server running on http://0.0.0.0:7645
 | 確認伺服器狀態 | `http://localhost:7645/api/health` |
 | 機台操作面板（受試者端） | `http://localhost:7645/index.html` |
 | 實驗管理頁面（研究者端） | `http://localhost:7645/board.html` |
+| 實驗日誌瀏覽器 | `http://localhost:7645/archive.html` |
 
 健康檢查成功應看到：
 ```json
@@ -326,6 +327,7 @@ data/
 | **url-utils.js** | 匯出函數 | API 基礎路徑解析（`getApiBasePath()`）|
 | **event-emitter.js** | `EventEmitter` | 輕量事件訂閱基底類別，供各 Manager 繼承 |
 | **app-bootstrap.js** | 匯出函數 | 版本快取破壞（`data-versioned` 資源加版本號）、舊版瀏覽器儲存清理 |
+| **admin-auth.js** | 匯出函數 | 管理員 Token 取得與 sessionStorage 快取（供 Archive 頁面授權 record API）|
 
 #### js/panel/ - 面板控制模組
 
@@ -339,6 +341,35 @@ data/
 | **panel-logger.js** | `PanelLogger` | 操作日誌記錄、顯示、匯出 |
 | **panel-sync-manager.js** | `PanelSyncManager` | Panel 端同步事件監聽；`handleSyncExperimentStart/Stopped` 含 Panel 端狀態追蹤邏輯（_remoteExperimentActive、deferCompletion）；Paused/Resumed 直接委派 SystemManager |
 | **panel-init.js** | 匯出函數 | 集中建立所有 Manager 並完成依賴注入（`initializePanelManagers(page)`） |
+
+#### js/archive/ - 實驗日誌瀏覽與重標記模組
+
+`ArchivePageManager` 透過 `Object.assign` 將下列四個 mixin 混入 prototype，共享 `this._file`（`ArchiveFileState`）與 `this._renderAll()`。
+
+| 檔案 | 匯出 | 主要功能 |
+|---|---|---|
+| **archive-page-manager.js** | `ArchivePageManager` | 頁面入口；組合所有子模組方法，持有 `_file`、`_localFiles`、選取狀態 |
+| **archive-constants.js** | `ArchiveFileState`、工具函式 | 檔案狀態（entries / history / dirty）、`applyEdit`、`undoAt`、`commitAsOriginal`、`toEditedJsonl`；共用常數與 HTML 工具函式 |
+| **archive-sidebar.js** | `archiveSidebarMethods` | 伺服器 / 本機檔案清單；上傳、下載、刪除、另存新檔（`_saveWithSuffix`） |
+| **archive-viewer.js** | `archiveViewerMethods` | 工具列（已編輯指示、另存按鈕）、摘要統計、計數列、時間軸 / 表格 / 原始視圖渲染 |
+| **archive-editor.js** | `archiveEditorMethods` | 時間戳 / 類型 / 標記欄編輯彈出框；編輯記錄彈出框（撤回此步 / 還原至此） |
+| **archive-remark.js** | `archiveRemarkMethods` | 重新標記工作區：標記點建立 / 拖拉分配、多選平移（delta-based）、事件刪除（可撤回）、另存 / 合併輸出 |
+| **archive-init.js** | 入口腳本 | `bootstrapPage` + 載入 `ArchivePageManager`（`archive.html` 的 script 入口） |
+
+**`ArchiveFileState` 重要方法**
+
+| 方法 | 說明 |
+|---|---|
+| `applyEdit(index, field, value, label)` | 單筆欄位修改，記入 history，設 isDirty |
+| `applyBatchEdit(changes, label)` | 批次修改，原子性 history 記錄 |
+| `removeEntry(index)` | 刪除一筆 JSONL entry（可撤回） |
+| `undoAt(historyIndex)` | 單獨撤回指定 history 操作（保留其他） |
+| `undo()` | 撤回最後一步 |
+| `revert()` | 回到原始檔案狀態，清空 history / draft |
+| `commitAsOriginal()` | 儲存後推進基準線：`_original` ← 目前 entries，重設 `_origIdx`、清空 history / isDirty / draft |
+| `toEditedJsonl()` | 輸出當前 entries 為 JSONL（自動剝除內部 `_origIdx` 欄位） |
+
+`_origIdx` 是建構時賦予每筆 entry 的穩定識別碼，讓 `removeEntry` 後的 index 偏移不影響「是否已修改」的比對邏輯。localStorage 草稿保留 `_origIdx`；JSONL 輸出不含此欄位。
 
 #### js/sync/ - 同步模組
 
@@ -490,11 +521,13 @@ PanelPageManager.initialize()
 
 | 子目錄 | 說明 |
 |---|---|
+| `archive/` | Archive 頁面專用樣式（`archive.css`）|
 | `base/` | 全域、佈局、捲軸等基礎樣式 |
 | `components/` | 可複用元件（按鈕、表單、媒體區域等） |
 | `features/experiment/` | 實驗功能專用樣式（卡片、組合、手勢、計時等） |
 | `features/panels/` | 各控制面板樣式 |
 | `pages/` | Board / Panel 頁面的頁面級專用樣式 |
+| `shared/` | 跨頁面共用元件樣式（`file-list.css`、`filter-popover.css`）|
 | `states/` | 實驗、互動、電源的狀態樣式 |
 | `sync/` | 同步指示器、Modal、確認對話框樣式 |
 | `utilities/` | 動畫、響應式設計工具 |
@@ -512,15 +545,16 @@ assets/
 ### 根目錄檔案
 
 ```
-panel/
-├── index.html            # 機台面板（受試者端，實驗操作）
-├── board.html            # 實驗管理（研究者端，實驗分析）
-├── package.json          # Node.js 依賴管理（從這裡執行 npm 指令）
-├── package-lock.json     # 依賴鎖定檔案
-├── README.md             # 專案說明
-├── eslint.config.js      # ESLint 設定
-├── panel.code-workspace  # VS Code 工作區設定
-└── favicon.ico           # 網站圖標
+kairo/
+├── index.html             # 機台面板（受試者端，實驗操作）
+├── board.html             # 實驗管理（研究者端，實驗分析）
+├── archive.html           # 實驗日誌瀏覽器
+├── package.json           # Node.js 依賴管理（從這裡執行 npm 指令）
+├── package-lock.json      # 依賴鎖定檔案
+├── README.md              # 專案說明
+├── eslint.config.js       # ESLint 設定
+├── kairo.code-workspace   # VS Code 工作區設定
+└── favicon.ico            # 網站圖標
 
 scripts/
 ├── find_duplicate_logs.js              # 重複日誌檢測工具

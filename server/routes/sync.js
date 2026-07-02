@@ -26,6 +26,7 @@ import {
   getSyncMaxClients,
   ADMIN_TOKEN,
 } from "../config/server.js";
+import { safeEqual } from "../utils/safe-compare.js";
 
 const { PREFIX: PUBLIC_CHANNEL_PREFIX, VALID_NAMES: VALID_CHANNELS } = CHANNEL_CONSTANTS;
 
@@ -37,7 +38,7 @@ const router = express.Router();
  */
 function requireAdminToken(req, res, next) {
   const token = req.headers["x-admin-token"];
-  if (!token || token !== ADMIN_TOKEN) {
+  if (!token || !safeEqual(token, ADMIN_TOKEN)) {
     Logger.warn(`管理端點未授權存取 | ip=${req.ip} | path=${req.path}`);
     return res.status(HTTP_STATUS.FORBIDDEN).json({
       success: false,
@@ -101,7 +102,7 @@ router.post("/session", (req, res) => {
       message: "伺服器尚未設定建立代碼，請在 server/.env 設定 CREATE_CODE",
     });
   }
-  if (createCode !== validCreateCode) {
+  if (!safeEqual(createCode, validCreateCode)) {
     return res.status(HTTP_STATUS.BAD_REQUEST).json({
       success: false,
       error: ERROR_CODES.INVALID_CREATE_CODE,

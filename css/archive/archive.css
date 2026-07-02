@@ -52,11 +52,629 @@ body.archive-page {
 .archive-viewer-panel {
   flex: 1;
   min-width: 0;
-  padding: 30px;
+  padding: 0 30px 30px;
   overflow: hidden;
   background: transparent;
   display: flex;
   flex-direction: column;
+}
+
+/* ===== 右側 Tab 列 ===== */
+.archive-panel-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid #e0e0e0;
+  margin-bottom: 20px;
+  flex-shrink: 0;
+  padding-top: 24px;
+}
+
+.archive-panel-tab {
+  padding: 9px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #999;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  cursor: pointer;
+  transition: color 0.12s;
+}
+
+.archive-panel-tab:hover { color: #555; }
+
+.archive-panel-tab.is-active {
+  color: #667eea;
+  border-bottom-color: #667eea;
+}
+
+.archive-panel-tab--orange:hover { color: #e67e22; }
+.archive-panel-tab--orange.is-active {
+  color: #e67e22;
+  border-bottom-color: #e67e22;
+}
+
+/* ===== 簡易標記面板（POS 機風格，不滾動） ===== */
+.archive-quick-remark {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Layout ── */
+.qr-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/* ── Top Bar ── */
+.qr-top-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: #fafafa;
+  border-bottom: 2px solid #e8e8e8;
+  flex-wrap: wrap;
+}
+
+.qr-timer {
+  font-family: monospace;
+  font-size: 26px;
+  font-weight: 700;
+  color: #e67e22;
+  flex-shrink: 0;
+  letter-spacing: 2px;
+}
+
+.qr-participant {
+  padding: 5px 10px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 13px;
+  width: 130px;
+}
+
+.qr-info-chip {
+  font-size: 13px;
+  color: #666;
+  background: #f0f0f0;
+  padding: 4px 10px;
+  border-radius: 12px;
+}
+
+.qr-top-btns { display: flex; gap: 8px; flex-shrink: 0; }
+
+.qr-top-btn {
+  padding: 8px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.12s;
+  white-space: nowrap;
+}
+.qr-top-btn--start  { background: #e67e22; color: #fff; border-color: #e67e22; }
+.qr-top-btn--start:hover  { background: #ca6f1e; border-color: #ca6f1e; }
+.qr-top-btn--pause  { background: #fff; color: #555; border-color: #ccc; }
+.qr-top-btn--pause:hover  { border-color: #888; }
+.qr-top-btn--end    { background: #fff; color: #c0392b; border-color: #e74c3c; }
+.qr-top-btn--end:hover    { background: #e74c3c; color: #fff; }
+.qr-top-btn--export { background: #27ae60; color: #fff; border-color: #27ae60; }
+.qr-top-btn--export:hover { background: #219a52; }
+
+.qr-status-chip {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 12px;
+  flex-shrink: 0;
+}
+.qr-status--idle    { background: #f0f0f0; color: #888; }
+.qr-status--running { background: #e8f8ef; color: #1a8a47; }
+.qr-status--paused  { background: #fff8e8; color: #b7770d; }
+.qr-status--done    { background: #eef1ff; color: #5568d3; }
+
+.qr-panel-title { font-size: 13px; font-weight: 700; color: #555; }
+
+/* ── Main Area（上列控制 / 左欄機台 / 右欄觀察）── */
+.qr-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+}
+
+/* 左欄：機台手勢 */
+.qr-left-col {
+  width: 360px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 2px solid #e8e8e8;
+  overflow: hidden;
+}
+
+/* 右欄：標記判定（主要工作區）*/
+.qr-right-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.qr-panel {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 14px;
+  min-height: 0;
+  overflow: hidden;
+}
+.qr-panel--gestures { flex: 1; }
+.qr-panel + .qr-panel { border-left: 2px solid #e8e8e8; }
+
+.qr-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  margin-bottom: 8px;
+}
+
+.qr-pending-badge {
+  font-size: 12px;
+  font-weight: 600;
+  color: #e67e22;
+  background: #fff3e5;
+  padding: 3px 10px;
+  border-radius: 10px;
+}
+
+/* ── Gesture Grid ── */
+.qr-gesture-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  min-height: 0;
+  align-content: stretch;
+}
+
+.qr-gesture-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: #f8f8f8;
+  border: 2px solid #ddd;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.12s;
+  padding: 8px 4px;
+  touch-action: manipulation;
+  user-select: none;
+}
+.qr-gesture-btn:hover:not(:disabled) {
+  background: #fff3e5;
+  border-color: #e67e22;
+}
+.qr-gesture-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.qr-gesture-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.qr-gesture-btn.is-pending {
+  border-color: #e67e22;
+  background: #fff3e5;
+  box-shadow: 0 0 0 3px #e67e2240;
+}
+
+.qr-gesture-name {
+  font-size: 18px;
+  font-weight: 700;
+  color: #333;
+  text-align: center;
+  line-height: 1.2;
+}
+.qr-gesture-btn.is-pending .qr-gesture-name { color: #e67e22; }
+
+.qr-kb-hint {
+  font-size: 14px;
+  font-weight: 700;
+  color: #aaa;
+  font-family: monospace;
+  line-height: 1;
+}
+
+/* ── Judgment Panel ── */
+.qr-panel--judge { justify-content: stretch; }
+
+.qr-judge-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+.qr-judge-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.12s;
+  border: 2px solid;
+  min-height: 60px;
+}
+.qr-judge-btn:active:not(:disabled) { transform: scale(0.97); }
+.qr-judge-btn:disabled { cursor: not-allowed; }
+.qr-judge-btn.is-dim { opacity: 0.35; }
+
+.qr-judge--t  { background: #e8f8ef; border-color: #27ae60; color: #1a8a47; }
+.qr-judge--t:hover:not(:disabled)  { background: #27ae60; color: #fff; }
+.qr-judge--f  { background: #fdecea; border-color: #e74c3c; color: #c0392b; }
+.qr-judge--f:hover:not(:disabled)  { background: #e74c3c; color: #fff; }
+.qr-judge--n  { background: #f5f5f5; border-color: #aaa; color: #666; }
+.qr-judge--n:hover:not(:disabled)  { background: #aaa; color: #fff; }
+.qr-judge--custom { background: #eef1ff; border-color: #667eea; color: #5568d3; }
+.qr-judge--custom:hover:not(:disabled) { background: #667eea; color: #fff; }
+
+.qr-judge-key-badge {
+  font-family: monospace;
+  font-size: 18px;
+  font-weight: 700;
+  background: rgba(0,0,0,0.08);
+  padding: 2px 10px;
+  border-radius: 6px;
+}
+.qr-judge-label {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.qr-judge-hint {
+  font-size: 11px;
+  color: #bbb;
+  text-align: center;
+  margin-top: 6px;
+  flex-shrink: 0;
+}
+
+.qr-judge-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #aaa;
+  font-size: 13px;
+}
+
+.qr-setup-btn {
+  padding: 10px 20px;
+  background: #e67e22;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.qr-setup-btn:hover { background: #ca6f1e; }
+
+.qr-cfg-btn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  color: #aaa;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.qr-cfg-btn:hover { background: #f0f0f0; color: #555; }
+
+/* ── Log Strip（卡片式，可刪除誤按） ── */
+.qr-log-strip {
+  flex-shrink: 0;
+  display: flex;
+  gap: 8px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  border-top: 1px solid #e8e8e8;
+  background: #fafafa;
+  padding: 8px 14px;
+  min-height: 44px;
+}
+
+.qr-log-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 30px 6px 10px;   /* 右側留空給刪除鈕 */
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 12px;
+  white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+.qr-log-card--gesture_attempt   { border-color: #cfe3f0; }
+.qr-log-card--gesture_step_start { border-color: #e3d6f0; background: #fcfaff; }
+
+.qr-log-idx {
+  font-family: monospace;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  background: #b0a4c8;
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.qr-log-t { color: #bbb; font-family: monospace; }
+.qr-log-type { font-weight: 600; color: #555; }
+.qr-log-detail { color: #444; font-weight: 600; }
+
+/* 卡片內側右上角刪除鈕 */
+.qr-log-del {
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  line-height: 20px;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  background: #d9534f;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+  touch-action: manipulation;
+}
+.qr-log-del:hover { background: #c9302c; }
+.qr-log-del:active { transform: translateY(-50%) scale(0.9); }
+
+.qr-hint { font-size: 13px; color: #ccc; padding: 12px; }
+
+/* ── Config Page ── */
+.qr-cfg-page .qr-top-bar { background: #f5f6ff; border-bottom-color: #c5caf8; }
+
+.qr-cfg-body {
+  flex: 1;
+  padding: 20px 24px;
+  overflow-y: auto;
+}
+
+.qr-cfg-head {
+  display: grid;
+  grid-template-columns: 80px 1fr 140px 32px;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #999;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.qr-cfg-row {
+  display: grid;
+  grid-template-columns: 80px 1fr 140px 32px;
+  gap: 8px;
+  margin-bottom: 8px;
+  align-items: center;
+}
+
+.qr-cfg-inp {
+  padding: 7px 10px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 14px;
+}
+.qr-cfg-inp:focus { outline: none; border-color: #667eea; }
+.qr-cfg-key { font-family: monospace; font-weight: 700; text-align: center; }
+
+.qr-cfg-sel {
+  padding: 7px 8px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.qr-cfg-del {
+  background: none;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  color: #c0392b;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.qr-cfg-del:hover { background: #fdecea; border-color: #e74c3c; }
+
+.qr-cfg-hint {
+  font-size: 12px;
+  color: #aaa;
+  margin-top: 16px;
+}
+
+/* ── 按鈕上的鍵盤提示 ── */
+.qr-btn-key {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-family: monospace;
+  font-weight: 700;
+  background: rgba(255,255,255,0.25);
+  border: 1px solid rgba(255,255,255,0.5);
+  border-radius: 3px;
+  vertical-align: middle;
+  opacity: 0.85;
+}
+.qr-top-btn--start .qr-btn-key,
+.qr-top-btn--export .qr-btn-key { border-color: rgba(255,255,255,0.6); }
+.qr-top-btn--pause .qr-btn-key,
+.qr-top-btn--end   .qr-btn-key  { background: rgba(0,0,0,0.06); border-color: rgba(0,0,0,0.2); }
+
+/* ── 標記判定面板（填滿右欄，Grid 自動分配）── */
+.qr-zone-wrap {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  grid-auto-rows: minmax(80px, 1fr);
+  gap: 10px;
+  padding: 12px;
+  align-content: stretch;
+}
+
+/* ── 通用 Zone 按鈕 ── */
+.qr-zone-btn {
+  position: relative;
+  padding: 8px 6px;
+  border: 2px solid #ddd;
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: all 0.1s;
+  touch-action: manipulation;
+  user-select: none;
+  width: 100%;
+  height: 100%;
+}
+.qr-zone-btn:hover:not(:disabled) { border-color: #888; background: #f5f5f5; }
+.qr-zone-btn:active:not(:disabled) { transform: scale(0.93); background: #ebebeb; }
+.qr-zone-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.qr-zone-btn.is-last { background: #fffbe6; border-color: #e67e22; box-shadow: 0 0 0 3px #f39c1240; }
+
+/* 修飾詞（手指 / 手掌）—— 醒目底色 */
+.qr-zone--modifier       { border-color: #c39bd3; background: #f9f0ff; }
+.qr-zone--modifier:hover:not(:disabled)  { border-color: #8e44ad; background: #f3e5fa; }
+.qr-zone--modifier:active:not(:disabled) { background: #e8d5f5; }
+.qr-zone--modifier .qr-zone-key  { color: #8e44ad; }
+.qr-zone--modifier .qr-zone-name { font-size: 18px; color: #6c3483; font-weight: 700; }
+
+/* 動作鍵 */
+.qr-zone--action       { border-color: #a9cce3; }
+.qr-zone--action:hover:not(:disabled)  { border-color: #2471a3; background: #eaf4fb; }
+.qr-zone--action:active:not(:disabled) { background: #d6eaf8; }
+.qr-zone--action .qr-zone-key  { color: #2471a3; }
+
+/* 獨立手勢 */
+.qr-zone--standalone       { border-color: #f0d080; background: #fffdf0; }
+.qr-zone--standalone:hover:not(:disabled)  { border-color: #b7950b; background: #fefde7; }
+.qr-zone--standalone:active:not(:disabled) { background: #fdf5cc; }
+.qr-zone--standalone .qr-zone-key  { color: #9a7d0a; }
+
+.qr-zone-icon {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  opacity: 0.75;
+}
+.qr-zone--modifier .qr-zone-icon  { color: #8e44ad; opacity: 1; }
+.qr-zone--action   .qr-zone-icon  { color: #1a6fa8; }
+.qr-zone--standalone .qr-zone-icon { color: #9a7d0a; }
+.qr-zone-emoji {
+  font-size: 30px;
+  line-height: 1;
+  flex-shrink: 0;
+  /* 強制使用彩色 emoji 字型，避免被等寬字型渲染成黑白 */
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+}
+
+.qr-zone-key {
+  font-family: monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: #bbb;
+  line-height: 1;
+  position: absolute;
+  top: 5px;
+  left: 7px;
+}
+.qr-zone-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+  line-height: 1.2;
+  text-align: center;
+}
+
+/* ===== 控台面板 ===== */
+.archive-console {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  padding-top: 4px;
+}
+
+.console-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.console-section-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #bbb;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.console-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 10px;
+}
+
+.console-block {
+  aspect-ratio: 2 / 1;
+  background: white;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, box-shadow 0.12s;
+}
+
+.console-block:hover {
+  border-color: #bbb;
+  background: #f7f7f7;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.06);
 }
 
 #archiveViewer {
@@ -318,10 +936,15 @@ body.archive-page {
   border: 1.5px solid #e67e22;
   border-radius: 20px;
   padding: 2px 8px;
-  margin-left: 6px;
   white-space: nowrap;
   flex-shrink: 0;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
 }
+.archive-toolbar-dirty:hover { background: #fce0c0; color: #b75d10; border-color: #b75d10; }
+
+.archive-action-btn--save { color: #27ae60; border-color: #a8d5b8; }
+.archive-action-btn--save:hover:not(:disabled) { background: #eafaf1; border-color: #27ae60; }
 
 .archive-view-toggle {
   display: inline-flex;
@@ -615,22 +1238,6 @@ body.archive-page {
   flex-shrink: 0;
 }
 
-.archive-select-all {
-  accent-color: #667eea;
-  width: 15px;
-  height: 15px;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.archive-tl-check {
-  accent-color: #667eea;
-  width: 14px;
-  height: 14px;
-  cursor: pointer;
-  flex-shrink: 0;
-  margin: 0;
-}
 
 .archive-filter-select {
   padding: 5px 10px;
@@ -1077,7 +1684,7 @@ body.archive-page {
   flex: 1;
   min-width: 0;
   border-right: 2px solid #e0e0e0;
-  padding-left: 18px;
+  padding: 0 12px 0 18px;
   display: flex;
   flex-direction: column;
   max-height: 80vh;
@@ -1199,11 +1806,42 @@ body.archive-page {
 
 .remark-track-card--mark:hover { background: #f0f0f0; border-color: #999; }
 
+.remark-track-card--mark .remark-mark-del { display: none; }
+
 .remark-track-card--mark.is-selected {
   border-color: #667eea;
   border-style: dashed;
   background: #f0f2ff;
   box-shadow: inset 0 0 0 1px #667eea;
+}
+
+.remark-track-card--src .remark-src-del { display: none; }
+
+.remark-track-card--src.is-selected .remark-src-del,
+.remark-track-card--mark.is-selected .remark-mark-del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #e74c3c;
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.remark-track-card--src.is-edited {
+  border-color: #27ae60;
+  background: #f0faf5;
+}
+
+.remark-track-card--src.is-edited .remark-track-time {
+  color: #27ae60;
+  font-weight: 700;
 }
 
 .remark-mark-badge {

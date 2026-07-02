@@ -30,6 +30,7 @@ import { MessageHandler } from "./websocket/MessageHandler.js";
 // 匯入日誌工具
 import { Logger } from "./utils/logger.js";
 import { metrics } from "./metrics.js";
+import { safeEqual } from "./utils/safe-compare.js";
 
 // ES module 中取得目前檔案路徑
 const __filename = fileURLToPath(import.meta.url);
@@ -38,8 +39,8 @@ const __dirname = path.dirname(__filename);
 // 建立Express應用
 const app = express();
 
-// 設定信任代理（支援 Nginx 反向代理）
-app.set("trust proxy", true);
+// 設定信任代理（僅信任最近一層代理，防止 X-Forwarded-For 偽造）
+app.set("trust proxy", 1);
 
 // 建立 HTTP 伺服器（用於 WebSocket 升級）
 const httpServer = createServer(app);
@@ -83,6 +84,14 @@ const publicPath = path.join(__dirname, "..");
 Logger.info("初始化靜態檔案服務");
 Logger.debug(`靜態檔案路徑: <cyan>${publicPath}</cyan>`);
 
+// 封鎖伺服器端敏感路徑，防止透過靜態檔案服務直接存取
+// runtime/ 含 SQLite DB 與 JSONL；server/ 含原始碼；scripts/、node_modules/、docs/ 不對外公開
+const BLOCKED_STATIC = /^\/(?:runtime|server|scripts|node_modules|docs)(\/|$)/i;
+app.use((req, res, next) => {
+  if (BLOCKED_STATIC.test(req.path)) return res.status(404).end();
+  next();
+});
+
 const REVALIDATE_EXTS = new Set([".html", ".htm", ".js", ".css"]);
 
 app.use(
@@ -104,31 +113,9 @@ app.use("/api/health", healthRouter);
 app.use("/api/sync", syncRouter);
 app.use("/api/record", recordRouter);
 
-// 根路徑
+// 根路徑（僅回傳最低限度資訊，不公開 API 結構）
 app.get("/", (req, res) => {
-  res.json({
-    name: "Panel Backend Server",
-    version: "2.0.0",
-    port: SERVER_CONFIG.port,
-    status: "running",
-    fullUrl: req.fullUrl, // 測試自動取得的完整網址
-    endpoints: {
-      health: "/api/health",
-      sync: {
-        session: "POST /api/sync/session",
-        generate_share_code: "POST /api/sync/generate_share_code",
-        join: "POST /api/sync/join",
-        get_session: "GET /api/sync/session/:sessionId",
-        channel: "POST /api/sync/channel",
-      },
-      record: {
-        list: "GET /api/record/list",
-        save: "POST /api/record/save",
-        read: "GET /api/record/read/:filename",
-        delete: "DELETE /api/record/delete/:filename",
-      },
-    },
-  });
+  res.json({ status: "ok" });
 });
 
 // ===== 資料庫初始化 =====
@@ -202,13 +189,16 @@ Logger.success("WebSocket 系統已初始化");
 // ===== Metrics endpoint (/metrics) 與週期性更新
 // 說明：Prometheus 等監控系統會定期抓取本端點（scrape）以取得最新指標。
 // 本端點回傳為 Prometheus text format，可直接被 Prometheus 抓取。
-// Metrics endpoint
-app.get("/metrics", async (req, res) => {
+// Metrics endpoint（需要 admin token 避免伺服器統計外洩）
+app.get("/metrics", (req, res, next) => {
+  const token = req.headers["x-admin-token"];
+  if (!token || !safeEqual(token, ADMIN_TOKEN)) return res.status(403).end();
+  next();
+}, async (req, res) => {
   try {
     Logger.debug(`[metrics] request from ${req.ip}`);
     res.set("Content-Type", metrics.register.contentType);
     const body = await metrics.register.metrics();
-    // Log minimal info for troubleshooting
     Logger.debug(`[metrics] length=${body.length}`);
     res.send(body);
   } catch (e) {
@@ -273,7 +263,7 @@ setInterval(() => {
 app.get("/api/sync/admin-token", (req, res) => {
   const provided = req.headers["x-create-code"] || req.query.createCode;
   const valid = getValidCreateCode();
-  if (!valid || !provided || provided !== valid) {
+  if (!valid || !provided || !safeEqual(provided, valid)) {
     Logger.warn(`admin-token 端點未授權存取 | ip=${req.ip}`);
     return res.status(403).json({ success: false, message: "需要有效的建立代碼" });
   }

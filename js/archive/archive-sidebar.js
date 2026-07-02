@@ -547,6 +547,52 @@ export const archiveSidebarMethods = {
     this._renderLocalList();
   },
 
+  // ── 另存新檔（不覆蓋原始檔）──────────────────────────────────────────────
+
+  _saveWithSuffix(state) {
+    if (!state) return;
+    const orig = state.title;
+    const dot  = orig.lastIndexOf(".");
+    const newName = dot >= 0
+      ? orig.slice(0, dot) + "_edited" + orig.slice(dot)
+      : orig + "_edited";
+
+    if (state.source === "local") {
+      const blob = new Blob([state.toEditedJsonl()], { type: "application/x-ndjson" });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href = url; a.download = newName; a.click();
+      URL.revokeObjectURL(url);
+      state.commitAsOriginal();
+      this._renderAll();
+      return;
+    }
+    this._saveToServerWithSuffix(state, newName);
+  },
+
+  async _saveToServerWithSuffix(state, newName) {
+    const btn = document.querySelector("[data-action='save-file']");
+    if (btn) { btn.disabled = true; btn.textContent = "儲存中…"; }
+    try {
+      const res = await fetch(`${this._api}${API_ENDPOINTS.RECORD.SAVE}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename: newName, content: state.toEditedJsonl() }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "儲存失敗");
+      Logger.info(`[Archive] 另存成功: ${data.path}`);
+      state.commitAsOriginal();
+      await this._loadServerFiles();
+      this._renderAll();
+    } catch (err) {
+      Logger.error("[Archive] 另存失敗:", err.message);
+      alert(`另存失敗：${err.message}`);
+      const b = document.querySelector("[data-action='save-file']");
+      if (b) { b.disabled = false; b.textContent = "另存新檔"; }
+    }
+  },
+
   // ── 上傳至伺服器 ──────────────────────────────────────────────────────────
 
   async _uploadToServer(state) {

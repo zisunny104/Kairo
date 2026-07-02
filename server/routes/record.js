@@ -8,6 +8,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { Logger } from "../utils/logger.js";
 import { ADMIN_TOKEN, ARCHIVE_PROTECTED } from "../config/server.js";
+import { safeEqual } from "../utils/safe-compare.js";
 
 const router = express.Router();
 
@@ -15,7 +16,7 @@ function requireAdminToken(req, res, next) {
   if (!ARCHIVE_PROTECTED) return next();
   const token = req.headers["x-admin-token"];
   if (!token) return res.status(401).json({ success: false, error: "需要管理員授權" });
-  if (token !== ADMIN_TOKEN) {
+  if (!safeEqual(token, ADMIN_TOKEN)) {
     Logger.warn(`record 管理端點未授權存取 | ip=${req.ip} | path=${req.path}`);
     return res.status(403).json({ success: false, error: "授權失敗" });
   }
@@ -119,8 +120,21 @@ router.post("/save", async (req, res) => {
 
     const filepath = path.join(LOGS_DIR, safeFilename);
 
-    // 寫入檔案
-    await fs.writeFile(filepath, content, "utf8");
+    // 以獨佔模式寫入（flag: "wx"）：檔案已存在則拋出 EEXIST。
+    // save 端點對外開放（實驗機需在未授權下寫入日誌），因此改由「絕不覆蓋既有檔」
+    // 作為根本保護——實驗執行階段用時間戳命名不會撞名、編輯流程一律另存 _edited，
+    // 皆不需覆蓋；如此可防止任意用戶清除或竄改既有實驗資料。
+    try {
+      await fs.writeFile(filepath, content, { encoding: "utf8", flag: "wx" });
+    } catch (writeErr) {
+      if (writeErr.code === "EEXIST") {
+        return res.status(409).json({
+          success: false,
+          error: "檔案已存在，為保護既有資料不予覆蓋（請改用另存新檔或更換檔名）",
+        });
+      }
+      throw writeErr;
+    }
 
     const stats = await fs.stat(filepath);
 
@@ -203,6 +217,10 @@ router.patch("/update-participant/:filename", requireAdminToken, async (req, res
         success: false,
         error: "Missing filename or participant",
       });
+    }
+
+    if (typeof participant !== "string" || participant.length > 200) {
+      return res.status(400).json({ success: false, error: "participant 值無效（最多 200 字元）" });
     }
 
     const safeFilename = path.basename(filename);

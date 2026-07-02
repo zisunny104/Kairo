@@ -9,6 +9,7 @@
 - **即時通訊**：`WebSocket` + `REST API`，支援重連與離線佇列
 - **工作階段分享**：透過分享代碼快速加入協作
 - **紀錄系統**：Record 模組 + IndexedDB 緩衝 + JSONL 伺服器備份
+- **實驗日誌瀏覽器**：Archive 模組；時間軸 / 表格 / 原始視圖、時間戳編輯、重新標記工作區、另存新檔
 
 ## 技術堆疊
 
@@ -26,22 +27,25 @@
 ## 專案結構
 
 ```
-panel/
-├── index.html              # 主頁面(機台面板)
-├── board.html              # 實驗頁面(實驗管理)
+kairo/
+├── index.html              # 機台面板（受試者端）
+├── board.html              # 實驗管理（研究者端）
+├── archive.html            # 實驗日誌瀏覽器
 ├── js/                     # JavaScript 模組
-│   ├── core/              # 核心功能
-│   ├── board/             # 實驗相關
-│   ├── constants/         # 常數定義
-│   ├── experiment/        # 實驗系統
+│   ├── core/              # 核心功能（WebSocket、設定、校時、認證…）
+│   ├── archive/           # 實驗日誌瀏覽與重標記
+│   ├── board/             # 實驗管理頁面專用
+│   ├── constants/         # 共用常數定義
+│   ├── experiment/        # 實驗生命週期管理
 │   ├── panel/             # 面板控制
 │   ├── record/            # 日誌紀錄與檢視
 │   ├── sync/              # 同步系統
-│   └── ui/                # UI 元件
-├── css/                   # 樣式表
-├── data/                  # 設定資訊
+│   └── ui/                # 通用 UI 元件
+├── css/                   # 樣式表（含 archive/ 子目錄）
+├── data/                  # 靜態設定資料
 ├── assets/                # 資源檔案
 ├── docs/                  # 文件資料夾
+├── shared/                # 前後端共用常數（ws-protocol-constants.js）
 ├── runtime/               # 執行時資料（不上傳 GitHub）
 │   ├── database/         # 資料庫檔案
 │   ├── experiment-data/  # JSONL 實驗日誌
@@ -54,6 +58,16 @@ panel/
 謝祥紫 Xiang-zi Xie(@zisunny104)、GitHub Copilot、Claude Code
 
 ## 更新日誌
+
+#### v2.7.cab1de5 - Archive 編輯器強化
+
+- 拆分 `archive-page-manager.js` 為 7 個獨立模組（sidebar / viewer / editor / remark / init / constants）
+- 新增重新標記工作區：多選平移、drag-to-mark、刪除事件（可撤回）
+- 編輯記錄面板：單筆撤回 / 撤回到某筆，工具列「已編輯」指示可點擊
+- 另存新檔：加 `_edited` 後綴，原始檔唯讀保護；`commitAsOriginal()` 重設基準線
+- `ArchiveFileState` 引入 `_origIdx` 穩定對應，修正刪除後綠色標記誤判
+- Record API 加入 Token 授權，Archive 頁面送出 admin token
+- 修正草稿重載後 `_origIdx` 遺失導致綠色提示消失的問題
 
 #### v2.6.c906572 - 新增 Archive 與安全性修復
 
