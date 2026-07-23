@@ -37,6 +37,10 @@ router.use(express.json({ limit: "11mb" }));
 // 日誌檔案儲存路徑
 const LOGS_DIR = path.join(__dirname, "../../runtime/experiment-data");
 const MAX_CONTENT_BYTES = 10 * 1024 * 1024; // 10MB
+// 目錄總量上限：save 端點對外開放（實驗機需未授權寫入），單檔 wx 不可覆蓋僅能防竄改，
+// 無法阻止任意用戶不斷以新檔名寫入而填滿磁碟。此處以「目錄總量封頂」作絕對保護。
+// 預設 2GB，可用環境變數 RECORD_MAX_TOTAL_MB 調整。
+const MAX_TOTAL_BYTES = parseInt(process.env.RECORD_MAX_TOTAL_MB || "2048", 10) * 1024 * 1024;
 
 // 確保目錄存在
 async function ensureLogDir() {
@@ -45,6 +49,21 @@ async function ensureLogDir() {
   } catch {
     await fs.mkdir(LOGS_DIR, { recursive: true });
   }
+}
+
+// 計算日誌目錄目前 .jsonl 檔案的總位元組數
+async function getDirTotalBytes() {
+  const entries = await fs.readdir(LOGS_DIR);
+  let total = 0;
+  for (const entry of entries) {
+    if (!entry.endsWith(".jsonl")) continue;
+    try {
+      total += (await fs.stat(path.join(LOGS_DIR, entry))).size;
+    } catch {
+      // 檔案在列舉後被刪除等競態，略過
+    }
+  }
+  return total;
 }
 
 /**
@@ -104,6 +123,13 @@ router.post("/save", async (req, res) => {
       });
     }
 
+    if (typeof filename !== "string" || typeof content !== "string") {
+      return res.status(400).json({
+        success: false,
+        error: "filename 與 content 必須為字串",
+      });
+    }
+
     await ensureLogDir();
 
     // 防止路徑遍歷，並驗證副檔名
@@ -116,6 +142,16 @@ router.post("/save", async (req, res) => {
     const contentBytes = Buffer.byteLength(content, "utf8");
     if (contentBytes > MAX_CONTENT_BYTES) {
       return res.status(400).json({ success: false, error: `內容超過大小限制 (${MAX_CONTENT_BYTES / 1024 / 1024}MB)` });
+    }
+
+    // 目錄總量封頂：防止開放端點被不斷寫入新檔而填滿磁碟
+    const currentTotal = await getDirTotalBytes();
+    if (currentTotal + contentBytes > MAX_TOTAL_BYTES) {
+      Logger.warn(`[ExperimentLogs] 目錄總量將超過上限 (${MAX_TOTAL_BYTES / 1024 / 1024}MB)，拒絕寫入 | ip=${req.ip}`);
+      return res.status(507).json({
+        success: false,
+        error: "伺服器儲存空間已達上限，請聯絡管理員清理舊資料",
+      });
     }
 
     const filepath = path.join(LOGS_DIR, safeFilename);

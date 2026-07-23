@@ -21,7 +21,7 @@ export const archiveSidebarMethods = {
       const unitData = await unitRes.json();
 
       this._gestureMap = Object.fromEntries(
-        (scenData.gesture_list || []).map(g => [g.gesture_id, g.gesture_name])
+        (scenData.gesture_list || []).map(g => [g.gesture_id, g.gesture_name]),
       );
       this._stepMap = {};
       this._unitMap = {};
@@ -55,17 +55,17 @@ export const archiveSidebarMethods = {
   async _loadServerFiles() {
     const list = document.getElementById("serverFilesList");
     if (!list) return;
-    list.innerHTML = `<div class="archive-status">載入中…</div>`;
+    list.innerHTML = "<div class=\"archive-status\">載入中…</div>";
     try {
       const res  = await this._authedFetch(`${this._api}${API_ENDPOINTS.RECORD.LIST}`);
-      if (!res.ok && res.status !== 200) { list.innerHTML = `<div class="archive-status archive-status--error">無法取得檔案列表 (${res.status})</div>`; return; }
+      if (!res.ok) { list.innerHTML = `<div class="archive-status archive-status--error">無法取得檔案列表 (${res.status})</div>`; return; }
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "未知錯誤");
       this._serverFiles = data.files || [];
       this._renderServerList();
     } catch (err) {
       Logger.error("[Archive] 載入失敗:", err.message);
-      list.innerHTML = `<div class="archive-status archive-status--error">無法連接伺服器</div>`;
+      list.innerHTML = "<div class=\"archive-status archive-status--error\">無法連接伺服器</div>";
     }
   },
 
@@ -78,7 +78,7 @@ export const archiveSidebarMethods = {
       const wrap = document.createElement("div");
       wrap.className = "archive-file-filter-wrap";
       wrap.id = "serverFileFilterWrap";
-      wrap.innerHTML = `<input type="text" id="serverFileFilter" class="archive-file-filter" placeholder="搜尋檔案名稱…">`;
+      wrap.innerHTML = "<input type=\"text\" id=\"serverFileFilter\" class=\"archive-file-filter\" placeholder=\"搜尋檔案名稱…\">";
       list.parentNode.insertBefore(wrap, list);
       document.getElementById("serverFileFilter").addEventListener("input", e => {
         this._fileFilter = e.target.value.toLowerCase();
@@ -265,7 +265,7 @@ export const archiveSidebarMethods = {
 
     // 點擊檔案資訊區 = 開啟
     list.querySelectorAll(".archive-file-info").forEach(info =>
-      info.addEventListener("click", () => this._openServer(info.dataset.filename))
+      info.addEventListener("click", () => this._openServer(info.dataset.filename)),
     );
     // checkbox 選取
     list.querySelectorAll(".archive-file-checkbox").forEach(cb =>
@@ -275,7 +275,7 @@ export const archiveSidebarMethods = {
         else this._selectedFiles.delete(id);
         cb.closest(".archive-file-card")?.classList.toggle("is-selected", cb.checked);
         this._updateServerBatchBar();
-      })
+      }),
     );
   },
 
@@ -404,7 +404,7 @@ export const archiveSidebarMethods = {
     if (!ctn) return;
     if (this._localFiles.size === 0) { ctn.innerHTML = ""; return; }
     const activeId = this._file?.id || "";
-    ctn.innerHTML = `<div class="archive-local-label">本機（僅此工作階段）</div>` +
+    ctn.innerHTML = "<div class=\"archive-local-label\">本機（僅此工作階段）</div>" +
       [...this._localFiles.entries()].map(([id, f]) => {
         const safeId = escapeHtml(id);
         const sel    = this._selectedFiles.has(id);
@@ -441,7 +441,7 @@ export const archiveSidebarMethods = {
         this._restoreDraft(state);
         this._expandedSteps.clear();
         this._openState(state);
-      })
+      }),
     );
     ctn.querySelectorAll(".archive-file-checkbox").forEach(cb =>
       cb.addEventListener("change", () => {
@@ -449,7 +449,7 @@ export const archiveSidebarMethods = {
         if (cb.checked) this._selectedFiles.add(id);
         else this._selectedFiles.delete(id);
         cb.closest(".archive-file-card")?.classList.toggle("is-selected", cb.checked);
-      })
+      }),
     );
     ctn.querySelectorAll("[data-local-action]").forEach(btn =>
       btn.addEventListener("click", e => {
@@ -457,7 +457,7 @@ export const archiveSidebarMethods = {
         const id = btn.dataset.fileId;
         if (btn.dataset.localAction === "upload") this._uploadLocalFileById(id);
         else if (btn.dataset.localAction === "remove") this._removeLocalFile(id);
-      })
+      }),
     );
   },
 
@@ -524,7 +524,7 @@ export const archiveSidebarMethods = {
     const btn = document.querySelector(`[data-local-action="upload"][data-file-id="${CSS.escape(id)}"]`);
     if (btn) { btn.disabled = true; }
     try {
-      const res = await fetch(`${this._api}${API_ENDPOINTS.RECORD.SAVE}`, {
+      const res = await this._authedFetch(`${this._api}${API_ENDPOINTS.RECORD.SAVE}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ filename: state.title, content: state.toEditedJsonl() }),
@@ -574,7 +574,7 @@ export const archiveSidebarMethods = {
     const btn = document.querySelector("[data-action='save-file']");
     if (btn) { btn.disabled = true; btn.textContent = "儲存中…"; }
     try {
-      const res = await fetch(`${this._api}${API_ENDPOINTS.RECORD.SAVE}`, {
+      const res = await this._authedFetch(`${this._api}${API_ENDPOINTS.RECORD.SAVE}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ filename: newName, content: state.toEditedJsonl() }),
@@ -599,7 +599,7 @@ export const archiveSidebarMethods = {
     const btn = document.querySelector("[data-action='upload']");
     if (btn) { btn.disabled = true; btn.textContent = "上傳中…"; }
     try {
-      const res = await fetch(`${this._api}${API_ENDPOINTS.RECORD.SAVE}`, {
+      const res = await this._authedFetch(`${this._api}${API_ENDPOINTS.RECORD.SAVE}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ filename: state.title, content: state.toEditedJsonl() }),

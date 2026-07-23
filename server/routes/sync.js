@@ -981,7 +981,6 @@ router.post("/client/:clientId/role", requireAdminToken, (req, res) => {
   const { clientId } = req.params;
   const { role } = req.body;
   const sessionManager = req.app?.locals?.sessionManager;
-  const broadcastManager = req.app?.locals?.broadcastManager;
 
   if (!sessionManager) {
     return res.status(HTTP_STATUS.INTERNAL_ERROR).json({ success: false, message: "WebSocket 系統尚未初始化" });
@@ -1002,13 +1001,6 @@ router.post("/client/:clientId/role", requireAdminToken, (req, res) => {
     if (session?.clients.has(clientId)) {
       const meta = session.clients.get(clientId);
       session.clients.set(clientId, { ...meta, role });
-    }
-
-    // 通知該裝置角色已變更
-    if (broadcastManager) {
-      broadcastManager.sendToClient(clientId, { type: "role_changed", role, sessionId });
-      // 廣播給工作階段內其他人知道成員角色變更
-      broadcastManager.broadcastToRoom(sessionId, { type: "member_role_changed", clientId, role }, { excludeClientId: clientId });
     }
 
     Logger.event("blue", "~", `管理員調整角色 | clientId=${clientId} | role=${role}`);
@@ -1091,7 +1083,7 @@ router.post("/client/:clientId/refresh", requireAdminToken, (req, res) => {
   try {
     const state = sessionManager.getExperimentState(sessionId);
     const sent = broadcastManager.sendToClient(clientId, {
-      type: "sync_state",
+      type: WS_PROTOCOL.S2C.SYNC_STATE,
       sessionId,
       state: state || {},
     });

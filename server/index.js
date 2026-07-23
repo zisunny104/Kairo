@@ -19,6 +19,9 @@ import ShareCodeService from "./services/ShareCodeService.js";
 import healthRouter from "./routes/health.js";
 import syncRouter from "./routes/sync.js";
 import recordRouter from "./routes/record.js";
+import rosterRouter from "./routes/roster.js";
+import analysisRouter from "./routes/analysis.js";
+import assistMarkRouter from "./routes/assist-mark.js";
 
 // 匯入 WebSocket 系統
 import { WSServer } from "./websocket/WSServer.js";
@@ -112,6 +115,9 @@ app.use(
 app.use("/api/health", healthRouter);
 app.use("/api/sync", syncRouter);
 app.use("/api/record", recordRouter);
+app.use("/api/roster", rosterRouter);
+app.use("/api/analysis", analysisRouter);
+app.use("/api/assist-mark", assistMarkRouter);
 
 // 根路徑（僅回傳最低限度資訊，不公開 API 結構）
 app.get("/", (req, res) => {

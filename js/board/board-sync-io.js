@@ -216,14 +216,11 @@ class BoardSyncIO {
   receiveButtonAction(data) {
     const page = this.pageManager;
     const {
-      experimentId,
       button,
       actionId,
       function: buttonFunction,
       clientId,
     } = data;
-
-    const currentExperimentId = this._getExperimentId();
 
     if (actionId) {
       const now = Date.now();

@@ -359,7 +359,7 @@ class WebSocketClient {
           this.emit(type, data);
           break;
 
-        case "error":
+        case WS_PROTOCOL.S2C.ERROR:
           this.handleServerError(data);
           break;
 

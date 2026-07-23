@@ -27,7 +27,7 @@ export const archiveViewerMethods = {
 
   _setActive(id) {
     document.querySelectorAll(".archive-file-card").forEach(card =>
-      card.classList.toggle("is-active", card.dataset.fileId === id)
+      card.classList.toggle("is-active", card.dataset.fileId === id),
     );
   },
 
@@ -75,10 +75,10 @@ export const archiveViewerMethods = {
     const f = this._file;
     if (!f) return "";
     const dirty   = f.isDirty
-      ? `<button class="archive-toolbar-dirty" data-action="show-history" title="點按查看編輯記錄">● 已編輯</button>`
+      ? "<button class=\"archive-toolbar-dirty\" data-action=\"show-history\" title=\"點按查看編輯記錄\">● 已編輯</button>"
       : "";
     const saveBtn = f.isDirty
-      ? `<button class="archive-action-btn archive-action-btn--save" data-action="save-file" title="另存新檔（原始檔不變）">另存新檔</button>`
+      ? "<button class=\"archive-action-btn archive-action-btn--save\" data-action=\"save-file\" title=\"另存新檔（原始檔不變）\">另存新檔</button>"
       : "";
     const isLocal = f.source === "local";
     return `<div class="archive-toolbar">
@@ -91,7 +91,7 @@ export const archiveViewerMethods = {
       </div>
       <button class="archive-action-btn archive-action-btn--remark${f.viewMode === "remark" ? " is-active" : ""}" data-mode="remark">重新標記</button>
       ${saveBtn}
-      ${isLocal ? `<button class="archive-action-btn archive-action-btn--upload" data-action="upload">上傳至伺服器</button>` : ""}
+      ${isLocal ? "<button class=\"archive-action-btn archive-action-btn--upload\" data-action=\"upload\">上傳至伺服器</button>" : ""}
     </div>`;
   },
 
@@ -143,7 +143,7 @@ export const archiveViewerMethods = {
       ["button_action",      "按鈕操作"],
     ];
     const typeOptions = TYPE_OPTIONS.map(([v, l]) =>
-      `<option value="${v}"${this._entryFilter === v ? " selected" : ""}>${l}</option>`
+      `<option value="${v}"${this._entryFilter === v ? " selected" : ""}>${l}</option>`,
     ).join("");
 
     const filtered = this._applyEntryFilter(f.entries);
@@ -277,7 +277,7 @@ export const archiveViewerMethods = {
   // ── 時間軸視圖 ────────────────────────────────────────────────────────────
 
   _renderTimeline(entries) {
-    if (entries.length === 0) return `<div class="archive-viewer-state"><p>無記錄</p></div>`;
+    if (entries.length === 0) return "<div class=\"archive-viewer-state\"><p>無記錄</p></div>";
     const expStart   = entries.find(e => e.type === "exp_start");
     const expStartTs = expStart?.ts ?? entries.find(e => e.ts)?.ts ?? null;
     const relTime    = ts => (!ts || !expStartTs) ? "T+??" : `T+${this._tsm.formatStopwatch(ts - expStartTs)}`;
@@ -329,7 +329,7 @@ export const archiveViewerMethods = {
       const fields = this._topFields(entry);
       const body = fields.length
         ? `<div class="archive-top-body">${fields.map(([l, v]) =>
-            `<span class="archive-top-field"><span class="archive-top-label">${l}</span><span class="archive-top-val">${escapeHtml(String(v))}</span></span>`
+            `<span class="archive-top-field"><span class="archive-top-label">${l}</span><span class="archive-top-val">${escapeHtml(String(v))}</span></span>`,
           ).join("")}</div>`
         : "";
 
@@ -350,7 +350,7 @@ export const archiveViewerMethods = {
       const color = getTypeColor(entry);
       const label = RECORD_TYPE_LABELS[entry.type] || entry.type;
       const fields = this._topFields(entry);
-      return `${i > 0 ? '<div class="archive-merged-divider"></div>' : ""}
+      return `${i > 0 ? "<div class=\"archive-merged-divider\"></div>" : ""}
         <div class="archive-merged-row">
           <span class="archive-top-badge" style="background:${color.bg};color:${color.text}">${escapeHtml(label)}</span>
           ${fields.length ? `<span class="archive-top-body" style="display:inline-flex">${
@@ -480,7 +480,7 @@ export const archiveViewerMethods = {
     // 結果欄：使用 board 相同的 SVG 圖示
     const gType = entry.g_type;
 
-    const EMPTY = `<span class="cell-empty">—</span>`;
+    const EMPTY = "<span class=\"cell-empty\">—</span>";
 
     // 手勢欄：解析名稱 + 原始 g_id
     let gestureHtml = EMPTY;
@@ -526,7 +526,7 @@ export const archiveViewerMethods = {
   // ── 表格視圖 ──────────────────────────────────────────────────────────────
 
   _renderTable(entries) {
-    if (entries.length === 0) return `<div class="archive-viewer-state"><p>無記錄</p></div>`;
+    if (entries.length === 0) return "<div class=\"archive-viewer-state\"><p>無記錄</p></div>";
     const rows = entries.map((e, i) => {
       const time  = e.ts
         ? this._tsm.formatDateTime(e.ts, { includeDate: false, includeSeconds: true, includeMilliseconds: true })
@@ -570,12 +570,12 @@ export const archiveViewerMethods = {
   // ── 原始視圖 ──────────────────────────────────────────────────────────────
 
   _renderRaw(entries) {
-    if (entries.length === 0) return `<div class="archive-viewer-state"><p>無記錄</p></div>`;
+    if (entries.length === 0) return "<div class=\"archive-viewer-state\"><p>無記錄</p></div>";
     const lines = entries.map((e, i) =>
       `<div class="archive-raw-line">
         <span class="archive-raw-num">${i + 1}</span>
         <span class="archive-raw-code">${colorizeJson(JSON.stringify(e))}</span>
-      </div>`
+      </div>`,
     ).join("");
     return `<div class="archive-raw">${lines}</div>`;
   },

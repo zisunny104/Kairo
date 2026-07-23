@@ -92,7 +92,7 @@ export const archiveRemarkMethods = {
              <button class="remark-action-btn" data-remark="start">繼續標記</button>
              <button class="remark-action-btn remark-action-btn--secondary" data-remark="restart-all">從頭開始</button>
            </div>`
-        : `<button class="remark-action-btn" data-remark="start">開始標記</button>`;
+        : "<button class=\"remark-action-btn\" data-remark=\"start\">開始標記</button>";
     } else if (rs.status === "countdown") {
       controlsHtml = `<div class="remark-countdown-wrap">
         <div class="remark-countdown-num" id="remark-countdown">${rs.countdownLeft}</div>
@@ -132,7 +132,7 @@ export const archiveRemarkMethods = {
         顯示原始事件
       </label>
       ${selCount > 0 ? `<span class="remark-sel-count">已選 ${selCount} 筆</span>` : ""}
-      ${hasMarks ? `<button class="archive-count-btn remark-clear-all-btn" data-remark="clear-all">清除全部</button>` : ""}
+      ${hasMarks ? "<button class=\"archive-count-btn remark-clear-all-btn\" data-remark=\"clear-all\">清除全部</button>" : ""}
     </div>`;
 
     // ── 輸出按鈕 ──────────────────────────────────────────────────────────
@@ -180,7 +180,7 @@ export const archiveRemarkMethods = {
     items.sort((a, b) => (a.relMs ?? -Infinity) - (b.relMs ?? -Infinity));
 
     if (items.length === 0) {
-      return `<div class="remark-track-empty">開始標記後，此處將顯示標記點</div>`;
+      return "<div class=\"remark-track-empty\">開始標記後，此處將顯示標記點</div>";
     }
 
     const totalFiles = 1 + rs.importedFiles.length;
@@ -218,7 +218,7 @@ export const archiveRemarkMethods = {
       const isEdited    = isDraggable && _origEntry != null && _origEntry.ts !== _curEntry.ts;
       const fileIdxAttr = isDraggable ? ` data-entry-file-idx="${item.entryFileIdx}"` : "";
       return `<div class="remark-track-card remark-track-card--src${isSrcSel ? " is-selected" : ""}${isEdited ? " is-edited" : ""}"
-                   ${fileIdxAttr}${isDraggable ? ' draggable="true"' : ""}
+                   ${fileIdxAttr}${isDraggable ? " draggable=\"true\"" : ""}
                    data-rel-ms="${item.relMs ?? -1}">
         <span class="remark-track-source" style="background:${color}">${srcNum != null ? srcNum : "·"}</span>
         <span class="remark-track-time">${item.relMs != null ? fmtRel(item.relMs) : "—"}</span>
@@ -253,119 +253,21 @@ export const archiveRemarkMethods = {
   },
 
   _bindRemarkEvents(viewer) {
+    // workspace 內的事件（可獨立於整頁重繪重新綁定）
+    this._bindRemarkWorkspaceEvents(viewer);
+
+    // ── 以下為 workspace 以外（layout / 匯入面板 / 左側時間軸）的事件 ──
     const on = (sel, ev, fn) => viewer.querySelectorAll(sel).forEach(el => el.addEventListener(ev, fn));
 
-    on("[data-remark='start']",              "click", () => this._startRemarkCountdown());
-    on("[data-remark='restart-all']",        "click", () => { this._cleanupRemark(); this._remarkState = this._defaultRemarkState(); this._renderAll(); });
-    on("[data-remark='mark']",               "click", () => this._addMark());
-    on("[data-remark='pause']",              "click", () => this._pauseRemark());
-    on("[data-remark='resume']",             "click", () => this._resumeRemark());
-    on("[data-remark='stop']",               "click", () => this._stopRemark());
-    on("[data-remark='save-new']",           "click", () => this._remarkSaveNew());
-    on("[data-remark='merge']",              "click", () => this._remarkMerge());
-    on("[data-remark='continue-from-mark']", "click", e => {
-      e.stopPropagation();
-      this._continueFromMark(parseInt(e.currentTarget.dataset.markIdx));
-    });
-    on("[data-remark='clear-all']", "click", () => {
-      this._remarkState.marks = [];
-      this._remarkState.selectedMarkIdx = null;
-      this._remarkState.selectedSrcEntries.clear();
-      this._renderAll();
-    });
+    on("[data-remark='merge']", "click", () => this._remarkMerge());
     on("[data-remark='toggle-import']", "click", () => {
       this._remarkState.importPanelOpen = !this._remarkState.importPanelOpen;
       this._renderAll();
     });
-    viewer.querySelectorAll(".remark-src-del").forEach(btn =>
-      btn.addEventListener("click", e => {
-        e.stopPropagation();
-        const idx = parseInt(btn.dataset.srcDelIdx);
-        if (isNaN(idx) || !this._file) return;
-        this._file.removeEntry(idx);
-        this._remarkState.selectedSrcEntries.clear();
-        this._remarkState.selectedMarkIdx = null;
-        this._renderAll();
-      })
-    );
-
-    viewer.querySelector("#remark-show-original")?.addEventListener("change", e => {
-      this._remarkState.showOriginalInWorkspace = e.target.checked;
+    on("[data-remark='remove-file']", "click", e => {
+      this._remarkState.importedFiles.splice(parseInt(e.currentTarget.dataset.fileIdx), 1);
       this._renderAll();
     });
-
-    viewer.querySelectorAll("[data-remark='remove-file']").forEach(btn =>
-      btn.addEventListener("click", () => {
-        this._remarkState.importedFiles.splice(parseInt(btn.dataset.fileIdx), 1);
-        this._renderAll();
-      })
-    );
-
-    // 標記點卡片點選：切換 selectedMarkIdx
-    viewer.querySelectorAll("[data-mark-select]").forEach(card =>
-      card.addEventListener("click", e => {
-        if (e.target.closest("button")) return;
-        const i = parseInt(card.dataset.markSelect);
-        this._remarkState.selectedMarkIdx = this._remarkState.selectedMarkIdx === i ? null : i;
-        this._renderAll();
-      })
-    );
-
-    // 原始事件卡片點選：單選 / 複選（Ctrl/Cmd）
-    viewer.querySelectorAll(".remark-track-card--src[data-entry-file-idx]").forEach(card =>
-      card.addEventListener("click", e => {
-        if (e.target.closest("button")) return;
-        const idx = parseInt(card.dataset.entryFileIdx);
-        if (isNaN(idx)) return;
-        const sel = this._remarkState.selectedSrcEntries;
-        if (e.ctrlKey || e.metaKey) {
-          sel.has(idx) ? sel.delete(idx) : sel.add(idx);
-        } else {
-          if (sel.size === 1 && sel.has(idx)) sel.clear();
-          else { sel.clear(); sel.add(idx); }
-        }
-        this._renderAll();
-      })
-    );
-
-    // 拖曳：原始事件卡片
-    viewer.querySelectorAll(".remark-track-card--src[draggable='true']").forEach(card => {
-      card.addEventListener("dragstart", e => {
-        const entryFileIdx = parseInt(card.dataset.entryFileIdx);
-        const relMs        = parseFloat(card.dataset.relMs);
-        const sel          = this._remarkState.selectedSrcEntries;
-        const isMultiDrag  = sel.has(entryFileIdx) && sel.size > 1;
-        e.dataTransfer.setData("text/plain", JSON.stringify({ entryFileIdx, relMs, isMultiDrag }));
-        e.dataTransfer.effectAllowed = "move";
-      });
-    });
-
-    // 拖曳：標記點卡片作為放置目標
-    viewer.querySelectorAll("[data-drop-mark-idx]").forEach(card => {
-      card.addEventListener("dragover",  e => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; card.classList.add("drag-over"); });
-      card.addEventListener("dragleave", () => card.classList.remove("drag-over"));
-      card.addEventListener("drop", e => {
-        e.preventDefault(); card.classList.remove("drag-over");
-        let data;
-        try { data = JSON.parse(e.dataTransfer.getData("text/plain")); } catch { return; }
-        const { entryFileIdx, relMs: anchorRelMs, isMultiDrag } = data;
-        const markIdx = parseInt(card.dataset.dropMarkIdx);
-        if (isNaN(entryFileIdx) || isNaN(markIdx)) return;
-        if (isMultiDrag) this._assignMarkToMultiDrag(markIdx, anchorRelMs);
-        else             this._assignMarkToEntryIdx(markIdx, entryFileIdx);
-      });
-    });
-
-    viewer.querySelectorAll(".remark-mark-del").forEach(btn =>
-      btn.addEventListener("click", e => {
-        e.stopPropagation();
-        const i = parseInt(btn.dataset.markIdx);
-        this._remarkState.marks.splice(i, 1);
-        if (this._remarkState.selectedMarkIdx === i) this._remarkState.selectedMarkIdx = null;
-        else if (this._remarkState.selectedMarkIdx > i) this._remarkState.selectedMarkIdx--;
-        this._renderAll();
-      })
-    );
 
     const importBtn = viewer.querySelector("#remark-import-btn");
     const fileInput = viewer.querySelector("#remark-file-input");
@@ -385,6 +287,120 @@ export const archiveRemarkMethods = {
       const idx = parseInt(item.dataset.entryIdx);
       if (!isNaN(idx)) this._assignMarkToEvent(idx);
     });
+  },
+
+  /** 只重繪 workspace 面板並重新綁定其事件（不動左側時間軸／匯入面板）。
+   *  用於錄製中新增標記等高頻操作，避免整頁 innerHTML 重建。 */
+  _renderRemarkWorkspace() {
+    const ws = document.querySelector(".remark-workspace");
+    if (!ws) { this._renderAll(); return; }
+    ws.innerHTML = this._renderMarkWorkspace();
+    this._bindRemarkWorkspaceEvents(ws);
+  },
+
+  /** workspace（控制列＋工具列＋標記軌道）內的事件綁定。scope 可為整個 viewer 或 workspace 節點。 */
+  _bindRemarkWorkspaceEvents(scope) {
+    const on = (sel, ev, fn) => scope.querySelectorAll(sel).forEach(el => el.addEventListener(ev, fn));
+
+    on("[data-remark='start']",              "click", () => this._startRemarkCountdown());
+    on("[data-remark='restart-all']",        "click", () => { this._cleanupRemark(); this._remarkState = this._defaultRemarkState(); this._renderAll(); });
+    on("[data-remark='mark']",               "click", () => this._addMark());
+    on("[data-remark='pause']",              "click", () => this._pauseRemark());
+    on("[data-remark='resume']",             "click", () => this._resumeRemark());
+    on("[data-remark='stop']",               "click", () => this._stopRemark());
+    on("[data-remark='save-new']",           "click", () => this._remarkSaveNew());
+    on("[data-remark='continue-from-mark']", "click", e => {
+      e.stopPropagation();
+      this._continueFromMark(parseInt(e.currentTarget.dataset.markIdx));
+    });
+    on("[data-remark='clear-all']", "click", () => {
+      this._remarkState.marks = [];
+      this._remarkState.selectedMarkIdx = null;
+      this._remarkState.selectedSrcEntries.clear();
+      this._renderAll();
+    });
+    scope.querySelectorAll(".remark-src-del").forEach(btn =>
+      btn.addEventListener("click", e => {
+        e.stopPropagation();
+        const idx = parseInt(btn.dataset.srcDelIdx);
+        if (isNaN(idx) || !this._file) return;
+        this._file.removeEntry(idx);
+        this._remarkState.selectedSrcEntries.clear();
+        this._remarkState.selectedMarkIdx = null;
+        this._renderAll();
+      }),
+    );
+
+    scope.querySelector("#remark-show-original")?.addEventListener("change", e => {
+      this._remarkState.showOriginalInWorkspace = e.target.checked;
+      this._renderAll();
+    });
+
+    // 標記點卡片點選：切換 selectedMarkIdx
+    scope.querySelectorAll("[data-mark-select]").forEach(card =>
+      card.addEventListener("click", e => {
+        if (e.target.closest("button")) return;
+        const i = parseInt(card.dataset.markSelect);
+        this._remarkState.selectedMarkIdx = this._remarkState.selectedMarkIdx === i ? null : i;
+        this._renderAll();
+      }),
+    );
+
+    // 原始事件卡片點選：單選 / 複選（Ctrl/Cmd）
+    scope.querySelectorAll(".remark-track-card--src[data-entry-file-idx]").forEach(card =>
+      card.addEventListener("click", e => {
+        if (e.target.closest("button")) return;
+        const idx = parseInt(card.dataset.entryFileIdx);
+        if (isNaN(idx)) return;
+        const sel = this._remarkState.selectedSrcEntries;
+        if (e.ctrlKey || e.metaKey) {
+          sel.has(idx) ? sel.delete(idx) : sel.add(idx);
+        } else {
+          if (sel.size === 1 && sel.has(idx)) sel.clear();
+          else { sel.clear(); sel.add(idx); }
+        }
+        this._renderAll();
+      }),
+    );
+
+    // 拖曳：原始事件卡片
+    scope.querySelectorAll(".remark-track-card--src[draggable='true']").forEach(card => {
+      card.addEventListener("dragstart", e => {
+        const entryFileIdx = parseInt(card.dataset.entryFileIdx);
+        const relMs        = parseFloat(card.dataset.relMs);
+        const sel          = this._remarkState.selectedSrcEntries;
+        const isMultiDrag  = sel.has(entryFileIdx) && sel.size > 1;
+        e.dataTransfer.setData("text/plain", JSON.stringify({ entryFileIdx, relMs, isMultiDrag }));
+        e.dataTransfer.effectAllowed = "move";
+      });
+    });
+
+    // 拖曳：標記點卡片作為放置目標
+    scope.querySelectorAll("[data-drop-mark-idx]").forEach(card => {
+      card.addEventListener("dragover",  e => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; card.classList.add("drag-over"); });
+      card.addEventListener("dragleave", () => card.classList.remove("drag-over"));
+      card.addEventListener("drop", e => {
+        e.preventDefault(); card.classList.remove("drag-over");
+        let data;
+        try { data = JSON.parse(e.dataTransfer.getData("text/plain")); } catch { return; }
+        const { entryFileIdx, relMs: anchorRelMs, isMultiDrag } = data;
+        const markIdx = parseInt(card.dataset.dropMarkIdx);
+        if (isNaN(entryFileIdx) || isNaN(markIdx)) return;
+        if (isMultiDrag) this._assignMarkToMultiDrag(markIdx, anchorRelMs);
+        else             this._assignMarkToEntryIdx(markIdx, entryFileIdx);
+      });
+    });
+
+    scope.querySelectorAll(".remark-mark-del").forEach(btn =>
+      btn.addEventListener("click", e => {
+        e.stopPropagation();
+        const i = parseInt(btn.dataset.markIdx);
+        this._remarkState.marks.splice(i, 1);
+        if (this._remarkState.selectedMarkIdx === i) this._remarkState.selectedMarkIdx = null;
+        else if (this._remarkState.selectedMarkIdx > i) this._remarkState.selectedMarkIdx--;
+        this._renderAll();
+      }),
+    );
   },
 
   _startRemarkCountdown() {
@@ -466,7 +482,8 @@ export const archiveRemarkMethods = {
     const rs    = this._remarkState;
     const relMs = rs.pausedElapsed + Date.now() - rs.startRealTs;
     rs.marks.push({ relMs });
-    this._renderAll();
+    // 錄製中僅重繪 workspace（左側時間軸未變），避免大檔案每次標記整頁重建
+    this._renderRemarkWorkspace();
     // 閃爍 + 捲動到最新標記點
     const markBtn = document.querySelector(".remark-mark-btn");
     if (markBtn) {
@@ -513,7 +530,6 @@ export const archiveRemarkMethods = {
     const rs  = this._remarkState;
     const mark = rs.marks[markIdx];
     if (!mark || !this._file || rs.selectedSrcEntries.size === 0) return;
-    const expStartTs = this._file.entries.find(e => e.type === "exp_start")?.ts ?? 0;
     const delta = mark.relMs - anchorRelMs;
     for (const idx of rs.selectedSrcEntries) {
       const entry = this._file.entries[idx];
@@ -560,7 +576,7 @@ export const archiveRemarkMethods = {
       reader.onload = e => {
         const entries = parseJsonl(e.target.result);
         this._remarkState.importedFiles.push(
-          new ArchiveFileState({ id: `remark:${file.name}`, title: file.name, source: "local", entries })
+          new ArchiveFileState({ id: `remark:${file.name}`, title: file.name, source: "local", entries }),
         );
         this._renderAll();
       };
@@ -570,7 +586,6 @@ export const archiveRemarkMethods = {
 
   _remarkSaveNew() {
     if (!this._file || this._remarkState.marks.length === 0) return;
-    const expStartTs = this._file.entries.find(e => e.type === "exp_start")?.ts ?? Date.now();
     const newEntries = this._file.entries.map(e => ({ ...e }));
     // 根據標記點重新對齊：保留相對間隔，以第一個標記點為基準
     // 簡單模式：整體時間基準設為標記點對應的絕對時間

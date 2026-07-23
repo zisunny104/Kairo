@@ -39,4 +39,14 @@ export const API_ENDPOINTS = {
     UPDATE_PARTICIPANT: (filename) =>
       `/record/update-participant/${encodeURIComponent(filename)}`,
   },
+  ROSTER: {
+    PARTICIPANTS: "/roster/participants",
+  },
+  ANALYSIS: {
+    SAVE: "/analysis/save",
+    LIST: "/analysis/list",
+  },
+  ASSIST_MARK: {
+    DRAFT: "/assist-mark/draft",
+  },
 };

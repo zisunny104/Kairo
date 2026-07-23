@@ -171,7 +171,7 @@ export class SyncSessionsModal {
 
   _renderClientStateDetails(state) {
     if (!state || typeof state !== "object") {
-      return `<div class="ssm-client-state-empty">無可用狀態</div>`;
+      return "<div class=\"ssm-client-state-empty\">無可用狀態</div>";
     }
 
     const normalizedState = this._normalizeExperimentState(
@@ -222,7 +222,7 @@ export class SyncSessionsModal {
     statusItems.push(`<div class="ssm-client-state-row"><span>實驗狀態</span><strong>${experimentStatus}</strong></div>`);
 
     if (!meta.experimentId && !meta.participantName && !meta.combinationName && !meta.progress) {
-      statusItems.push(`<div class="ssm-client-state-empty">此裝置回傳的狀態尚無實驗摘要</div>`);
+      statusItems.push("<div class=\"ssm-client-state-empty\">此裝置回傳的狀態尚無實驗摘要</div>");
     }
 
     return `<div class="ssm-client-state-details">${statusItems.join("")}</div>`;
@@ -895,7 +895,7 @@ export class SyncSessionsModal {
         const clientElement = event.target.closest(".ssm-client");
         const stateContainer = clientElement?.querySelector(".ssm-client-state");
         if (stateContainer) {
-          stateContainer.innerHTML = `<div class="ssm-client-state-loading">請求中...</div>`;
+          stateContainer.innerHTML = "<div class=\"ssm-client-state-loading\">請求中...</div>";
         }
 
         (async () => {

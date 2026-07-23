@@ -251,7 +251,7 @@ export class WSServer {
    */
   sendError(ws, code, message) {
     const errorMessage = {
-      type: "error",
+      type: WS_PROTOCOL.S2C.ERROR,
       data: {
         code,
         message,

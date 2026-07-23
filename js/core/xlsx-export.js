@@ -1,0 +1,39 @@
+/**
+ * xlsx-export.js — 通用表格下載介面
+ * 給任何頁面把二維陣列（表頭 + 資料列）下載成 Excel 或 CSV，不綁定特定分頁的狀態結構。
+ */
+import * as XLSX from "../vendor/xlsx.mjs";
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/** rows：二維陣列，第一列視為表頭。sheetName 僅用於 Excel。 */
+export function downloadXlsx(rows, filename, sheetName = "Sheet1") {
+  if (!rows.length) return;
+  const sheet = XLSX.utils.aoa_to_sheet(rows);
+  const book = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(book, sheet, sheetName);
+  const data = XLSX.write(book, { bookType: "xlsx", type: "array" });
+  const blob = new Blob([data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  downloadBlob(blob, filename.endsWith(".xlsx") ? filename : `${filename}.xlsx`);
+}
+
+export function downloadCsv(rows, filename) {
+  if (!rows.length) return;
+  const escapeCsv = value => {
+    const text = value == null ? "" : String(value);
+    if (/[",\n\r]/.test(text)) return `"${text.replace(/"/g, "\"\"")}"`;
+    return text;
+  };
+  const text = rows.map(row => row.map(escapeCsv).join(",")).join("\n") + "\n";
+  const blob = new Blob([text], { type: "text/csv;charset=utf-8" });
+  downloadBlob(blob, filename.endsWith(".csv") ? filename : `${filename}.csv`);
+}

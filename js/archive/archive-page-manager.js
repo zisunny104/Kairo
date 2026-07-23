@@ -5,10 +5,8 @@
 import { Logger } from "../core/console-manager.js";
 import { getApiUrl } from "../core/url-utils.js";
 import { getAdminToken, clearAdminToken } from "../core/admin-auth.js";
-import { API_ENDPOINTS } from "../constants/index.js";
 import { TimeSyncManager } from "../core/time-sync-manager.js";
 import { SyncManager } from "../sync/sync-manager.js";
-import { ArchiveFileState } from "./archive-constants.js";
 import { archiveSidebarMethods } from "./archive-sidebar.js";
 import { archiveViewerMethods } from "./archive-viewer.js";
 import { archiveEditorMethods } from "./archive-editor.js";
@@ -80,7 +78,7 @@ Object.assign(ArchivePageManager.prototype,
   archiveSidebarMethods,
   archiveViewerMethods,
   archiveEditorMethods,
-  archiveRemarkMethods
+  archiveRemarkMethods,
 );
 
 // ── 啟動 ──────────────────────────────────────────────────────────────────────

@@ -369,8 +369,6 @@ class ButtonManager {
       );
     }
 
-    const systemManager = this._getSystemManager();
-
     // 實驗模式下檢查是否有對應的動作
     if (this._isExperimentRunning(flowManager)) {
       if (this.checkAndExecuteExperimentAction(buttonId, functionName)) {

@@ -6,18 +6,18 @@ import { Logger } from "../core/console-manager.js";
 
 // ── 共用 SVG 圖示 ─────────────────────────────────────────────────────────────
 export const ICON = {
-  copy:    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
-  edit:    `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`,
-  refresh: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>`,
-  chevronDown:  `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`,
-  chevronRight: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>`,
+  copy:    "<svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"9\" y=\"9\" width=\"13\" height=\"13\" rx=\"2\"/><path d=\"M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1\"/></svg>",
+  edit:    "<svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7\"/><path d=\"M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z\"/></svg>",
+  refresh: "<svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M23 4v6h-6\"/><path d=\"M1 20v-6h6\"/><path d=\"M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15\"/></svg>",
+  chevronDown:  "<svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"6 9 12 15 18 9\"/></svg>",
+  chevronRight: "<svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"9 6 15 12 9 18\"/></svg>",
 };
 
 // ── 手勢嘗試標記圖示（對應 board 的三種標記按鈕）─────────────────────────────
 export const ATTEMPT_ICON = {
-  t: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/></svg>`,
-  n: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12,4.5 20.5,19.5 3.5,19.5"/></svg>`,
-  f: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"><line x1="5.5" y1="5.5" x2="18.5" y2="18.5"/><line x1="18.5" y1="5.5" x2="5.5" y2="18.5"/></svg>`,
+  t: "<svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"3.5\" stroke-linecap=\"round\"><circle cx=\"12\" cy=\"12\" r=\"8.5\"/></svg>",
+  n: "<svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"3.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polygon points=\"12,4.5 20.5,19.5 3.5,19.5\"/></svg>",
+  f: "<svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"3.5\" stroke-linecap=\"round\"><line x1=\"5.5\" y1=\"5.5\" x2=\"18.5\" y2=\"18.5\"/><line x1=\"18.5\" y1=\"5.5\" x2=\"5.5\" y2=\"18.5\"/></svg>",
 };
 export const ATTEMPT_COLOR = { t: "#4caf50", f: "#f44336", n: "#ff9800" };
 
@@ -137,7 +137,8 @@ export function stripColorTags(s) {
 export function escapeHtml(str) {
   return String(str)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 // escapeHtml 會把 " 轉成 &quot; 使後續 regex 無法匹配 JSON 引號
@@ -148,11 +149,11 @@ export function escapeHtmlText(str) {
 
 export function colorizeJson(jsonStr) {
   return escapeHtmlText(jsonStr)
-    .replace(/"([^"]+)":/g, '<span class="raw-key">"$1"</span>:')
-    .replace(/: "([^"]*)"/g, ': <span class="raw-str">"$1"</span>')
-    .replace(/: (\d+(?:\.\d+)?)/g, ': <span class="raw-num">$1</span>')
-    .replace(/: (true|false)/g, ': <span class="raw-bool">$1</span>')
-    .replace(/: (null)/g, ': <span class="raw-null">$1</span>');
+    .replace(/"([^"]+)":/g, "<span class=\"raw-key\">\"$1\"</span>:")
+    .replace(/: "([^"]*)"/g, ": <span class=\"raw-str\">\"$1\"</span>")
+    .replace(/: (\d+(?:\.\d+)?)/g, ": <span class=\"raw-num\">$1</span>")
+    .replace(/: (true|false)/g, ": <span class=\"raw-bool\">$1</span>")
+    .replace(/: (null)/g, ": <span class=\"raw-null\">$1</span>");
 }
 
 // ── ArchiveFileState（資料層）──────────────────────────────────────────────────

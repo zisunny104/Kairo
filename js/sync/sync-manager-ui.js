@@ -206,10 +206,10 @@ export class SyncManagerUI {
   _renderControlPanelHeader() {
     const pages = this._getPageList();
     const btnHtml = pages.map(p =>
-      `<button class="sync-page-toggle-btn" data-page="${p.key}"><span class="btn-text-split">${p.name}</span></button>`
+      `<button class="sync-page-toggle-btn" data-page="${p.key}"><span class="btn-text-split">${p.name}</span></button>`,
     ).join("");
     const optHtml = pages.map(p =>
-      `<option value="${p.key}">${p.name}</option>`
+      `<option value="${p.key}">${p.name}</option>`,
     ).join("");
     return `
       <div class="modal-header">

@@ -2,8 +2,8 @@
  * archive-editor.js — 時間戳、類型、標記欄編輯彈出框
  */
 
-import { ICON, ATTEMPT_ICON, ATTEMPT_COLOR, TYPE_COLORS, escapeHtml } from "./archive-constants.js";
-import { RECORD_TYPE_LABELS, GESTURE_ATTEMPT_TYPE_LABELS } from "../constants/index.js";
+import { ICON, ATTEMPT_ICON, ATTEMPT_COLOR, escapeHtml } from "./archive-constants.js";
+import { RECORD_TYPE_LABELS } from "../constants/index.js";
 
 export const archiveEditorMethods = {
 
@@ -11,10 +11,10 @@ export const archiveEditorMethods = {
 
   _bindViewerEvents(viewer) {
     viewer.querySelectorAll("[data-mode]").forEach(btn =>
-      btn.addEventListener("click", () => this._setViewMode(btn.dataset.mode))
+      btn.addEventListener("click", () => this._setViewMode(btn.dataset.mode)),
     );
     viewer.querySelectorAll("[data-action='show-history']").forEach(el =>
-      el.addEventListener("click", e => { e.stopPropagation(); this._showHistoryPopup(e.currentTarget); })
+      el.addEventListener("click", e => { e.stopPropagation(); this._showHistoryPopup(e.currentTarget); }),
     );
     viewer.addEventListener("click", e => {
       if (!e.target.closest("#history-popup") && !e.target.closest("[data-action='show-history']"))
@@ -50,7 +50,7 @@ export const archiveEditorMethods = {
     viewer.querySelectorAll(".archive-step-header[data-step-key]").forEach(hdr =>
       hdr.addEventListener("click", e => {
         this._toggleStep(hdr.dataset.stepKey);
-      })
+      }),
     );
 
     // 時間戳彈出框
@@ -122,7 +122,7 @@ export const archiveEditorMethods = {
           if (newVal !== currentVal) {
             fileState.applyBatchEdit(
               relevantIndices.map(i => ({ index: i, field, value: newVal })),
-              `修改${field}: ${currentVal} → ${newVal}`
+              `修改${field}: ${currentVal} → ${newVal}`,
             );
           }
           this._renderAll();
@@ -209,7 +209,7 @@ export const archiveEditorMethods = {
         e.stopPropagation();
         input.value = (parseInt(input.value) || currentTs) + parseInt(btn.dataset.delta);
         updatePreview();
-      })
+      }),
     );
 
     popup.querySelector(".ts-revert-btn").addEventListener("click", e => {
@@ -333,7 +333,7 @@ export const archiveEditorMethods = {
          style="background:${ATTEMPT_COLOR[m.g]}"
          data-g="${m.g}" title="${m.label}">
         ${ATTEMPT_ICON[m.g]}
-      </button>`
+      </button>`,
     ).join("");
 
     const rect = el.getBoundingClientRect();
@@ -349,15 +349,21 @@ export const archiveEditorMethods = {
           this._file.applyEdit(idx, "g_type", newG, `標記: ${currentG}→${newG}`);
         this._closeMarkPopup();
         this._renderAll();
-      })
+      }),
     );
 
-    document.addEventListener("keydown", ev => {
+    document.addEventListener("keydown", this._markPopupKeyHandler = ev => {
       if (ev.key === "Escape") this._closeMarkPopup();
-    }, { once: true });
+    });
   },
 
-  _closeMarkPopup() { document.getElementById("mark-popup")?.remove(); },
+  _closeMarkPopup() {
+    document.getElementById("mark-popup")?.remove();
+    if (this._markPopupKeyHandler) {
+      document.removeEventListener("keydown", this._markPopupKeyHandler);
+      this._markPopupKeyHandler = null;
+    }
+  },
 
   // ── 編輯記錄彈出框 ────────────────────────────────────────────────────────
 
@@ -414,7 +420,7 @@ export const archiveEditorMethods = {
         this._file.undoAt(parseInt(btn.dataset.histIdx));
         popup.remove();
         this._renderAll();
-      })
+      }),
     );
     // 還原至此（撤銷此步之後所有操作）
     popup.querySelectorAll(".history-undo-btn").forEach(btn =>
@@ -424,7 +430,7 @@ export const archiveEditorMethods = {
         for (let i = 0; i < steps; i++) this._file.undo();
         popup.remove();
         this._renderAll();
-      })
+      }),
     );
     popup.querySelector("#history-close-btn").addEventListener("click", e => {
       e.stopPropagation();

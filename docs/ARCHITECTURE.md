@@ -54,6 +54,8 @@
 │  │  資料層 (SQLite)                                     │   │
 │  │  - sessions (工作階段)                               │   │
 │  │  - share_codes (分享代碼)                            │   │
+│  │  - experiment_ids (實驗 ID)                          │   │
+│  │  - state_updates (狀態更新)                          │   │
 │  └──────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -268,15 +270,14 @@ server/
 │   └── MessageHandler.js    # 訊息處理器（auth、heartbeat、state_update）
 ├── routes/
 │   ├── sync.js              # 同步 API（工作階段、分享代碼、驗證）
-│   ├── record.js            # 實驗日誌 API（record 使用；JSONL 檔案讀寫）
-│   ├── experiment.js        # 實驗 API（ID 產生）
+│   ├── record.js            # 實驗日誌 API（JSONL 檔案讀寫）
+│   ├── experiment.js        # 實驗 ID REST 路由（未在 index.js 註冊，未啟用）
 │   └── health.js            # 心跳檢測 API (`GET /api/health`)
-├── middleware/
-│   └── (目前為空，預留擴展)
 └── utils/
     ├── logger.js            # 日誌工具（console 包裝）
     ├── idGenerator.js       # ID 產生工具
     ├── checksum.js          # 校驗碼計算
+    ├── safe-compare.js      # 常數時間字串比對（token / 建立代碼）
     ├── sync-role-guard.js   # operator 角色衝突檢查與 clientType 正規化
     └── time.js              # 時間工具
 ```
@@ -355,6 +356,8 @@ data/
 | **archive-editor.js** | `archiveEditorMethods` | 時間戳 / 類型 / 標記欄編輯彈出框；編輯記錄彈出框（撤回此步 / 還原至此） |
 | **archive-remark.js** | `archiveRemarkMethods` | 重新標記工作區：標記點建立 / 拖拉分配、多選平移（delta-based）、事件刪除（可撤回）、另存 / 合併輸出 |
 | **archive-init.js** | 入口腳本 | `bootstrapPage` + 載入 `ArchivePageManager`（`archive.html` 的 script 入口） |
+| **archive-tabs.js** | 入口腳本（IIFE） | 頂層 Tab 切換（日誌檢視 / 簡易標記），含側欄自動收合 |
+| **archive-quick-remark.js** | `onQuickRemarkActivate` | 簡易標記模式（POS 風格大按鈕、鍵盤快捷）；輸出與 board 相容的 JSONL |
 
 **`ArchiveFileState` 重要方法**
 
@@ -684,7 +687,6 @@ connect -> auth(clientId, sessionId, role) -> auth_success(isReconnect, serverTi
 | 方法   | 端點                                          | 說明                               |
 | ------ | --------------------------------------------- | ---------------------------------- |
 | POST   | `/api/sync/session`                           | 建立新的工作階段                   |
-| POST   | `/api/sync/create_session`                    | 建立工作階段（僅建立）             |
 | POST   | `/api/sync/generate_share_code`               | 產生分享代碼                       |
 | POST   | `/api/sync/join`                              | 使用分享代碼加入工作階段           |
 | POST   | `/api/sync/session/:sessionId/share-code`     | 為指定工作階段產生分享代碼         |
@@ -694,7 +696,6 @@ connect -> auth(clientId, sessionId, role) -> auth_success(isReconnect, serverTi
 | GET    | `/api/sync/sessions` 🔒                       | 取得所有活動中的工作階段列表       |
 | DELETE | `/api/sync/session/:sessionId` 🔒             | 刪除指定的工作階段                 |
 | POST   | `/api/sync/sessions/clear` 🔒                 | 清除所有工作階段                   |
-| POST   | `/api/sync/heartbeat`                         | 更新工作階段活動時間               |
 | GET    | `/api/sync/share-code/:code`                  | 取得分享代碼資訊                   |
 | POST   | `/api/sync/channel`                           | 建立公開頻道工作階段               |
 | GET    | `/api/sync/channels`                          | 取得所有公開頻道                   |
@@ -703,22 +704,23 @@ connect -> auth(clientId, sessionId, role) -> auth_success(isReconnect, serverTi
 | POST   | `/api/sync/client/:clientId/role` 🔒          | 調整指定客戶端角色                 |
 | POST   | `/api/sync/client/:clientId/request-state` 🔒 | 向指定客戶端請求當前狀態           |
 | POST   | `/api/sync/client/:clientId/refresh` 🔒       | 推送最新同步狀態給指定客戶端       |
-| GET    | `/api/sync/admin-token`                       | 取得管理員 Token（區網無需認證）   |
+| GET    | `/api/sync/admin-token`                       | 取得管理員 Token（需帶正確 `X-Create-Code` 或 `?createCode=`）|
 
-#### 3. 實驗 API
+#### 3. 實驗 API（未啟用）
 
-| 方法 | 端點                 | 說明        |
-| ---- | -------------------- | ----------- |
-| POST | `/api/experiment/id` | 建立實驗 ID |
+`server/routes/experiment.js` 定義了 `/api/experiment/*`（`id` 的 POST/GET/PUT/DELETE、`list`、`validate`），但未在 `server/index.js` 註冊，對外不可用。實驗 ID 的產生與同步由 WebSocket 處理：C2S `experiment_id_register` → `handleExperimentIdRegister`。
 
 #### 4. 日誌 API
 
-| 方法   | 端點                           | 說明             |
-| ------ | ------------------------------ | ---------------- |
-| GET    | `/api/record/list`             | 列出所有日誌檔案 |
-| POST   | `/api/record/save`             | 儲存日誌檔案     |
-| GET    | `/api/record/read/:filename`   | 讀取日誌檔案內容 |
-| DELETE | `/api/record/delete/:filename` | 刪除日誌檔案     |
+> **🔒 標記說明**：標有 🔒 的端點在 `ARCHIVE_PROTECTED=true` 時需帶 `X-Admin-Token`，預設開放模式（`false`）下無需授權。`/api/record/save` 一律開放（供實驗機在未授權下寫入日誌），保護機制為：單檔 `wx` 不覆蓋既有檔、單檔上限 10MB、目錄總量上限 `RECORD_MAX_TOTAL_MB`（預設 2GB）。
+
+| 方法   | 端點                                          | 說明                                   |
+| ------ | --------------------------------------------- | -------------------------------------- |
+| GET    | `/api/record/list` 🔒                         | 列出所有日誌檔案                       |
+| POST   | `/api/record/save`                            | 儲存日誌檔案（開放；不覆蓋既有檔）     |
+| GET    | `/api/record/read/:filename` 🔒               | 讀取日誌檔案內容                       |
+| PATCH  | `/api/record/update-participant/:filename` 🔒 | 更新檔內所有 exp_start/exp_end 的受試者 |
+| DELETE | `/api/record/delete/:filename` 🔒             | 刪除日誌檔案                           |
 
 ---
 
@@ -738,6 +740,8 @@ connect -> auth(clientId, sessionId, role) -> auth_success(isReconnect, serverTi
 | `get_session_state`      | 取得目前工作階段完整狀態快照               | `handleGetSessionState`      |
 | `ping`                   | Ping                                       | `handlePing`                 |
 | `experiment_id_register` | 任一端重新產生實驗 ID 後廣播給同頻道所有人 | `handleExperimentIdRegister` |
+| `experiment_state_register` | 註冊 / 更新工作階段的實驗狀態快照       | `handleExperimentStateRegister` |
+| `client_state_response`  | 客戶端回覆管理端的狀態請求                 | `handleClientStateResponse`  |
 
 #### S2C（伺服器 → 客戶端）
 
@@ -759,6 +763,9 @@ connect -> auth(clientId, sessionId, role) -> auth_success(isReconnect, serverTi
 | `experiment_resumed`    | 實驗繼續                     | `experimentId`, `source`              |
 | `experiment_stopped`    | 實驗停止                     | `experimentId`, `source`              |
 | `experiment_id_changed` | 實驗 ID 已變更（伺服器推播） | `experimentId`, `timestamp`           |
+| `sync_state`            | 管理端推送的最新同步狀態     | `sessionId`, `state`                  |
+| `request_client_state`  | 要求指定客戶端回報當前狀態   | —                                     |
+| `kicked`                | 遭管理員強制退出             | `reason`                              |
 | `error`                 | 錯誤訊息                     | `code`, `message`                     |
 
 ---
@@ -871,6 +878,10 @@ npm run version:hash
 
 # 查看目前版本狀態
 npm run version:status
+
+# 進位主版號 / 次版號（同時更新 hash）
+npm run version:bump-major
+npm run version:bump-minor
 ```
 
 ### Git Commit Hash 說明
@@ -893,6 +904,6 @@ npm run version:status
 
 ### 儲存與存取邊界
 
-- 伺服器端儲存路徑：`runtime/experiment-data/`
+- 伺服器端儲存路徑：`runtime/experiment-data/`（**硬編碼**於 `server/routes/record.js` 的 `LOGS_DIR`，不受 config.json 影響）
 - 前端僅透過 API 存取日誌：`/api/record/*`
-- 日誌目錄可由 `config.json` 的 `experiment.logsDirectory` 配置
+- `config.json` 的 `experiment.logsDirectory` 僅供**前端顯示路徑**參考（`js/record/record-view.js`），不會改變伺服器實際寫入位置
