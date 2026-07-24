@@ -9,8 +9,9 @@ import * as XLSX from "../vendor/xlsx.mjs";
 import { getApiUrl } from "../core/url-utils.js";
 import { getAdminToken, clearAdminToken } from "../core/admin-auth.js";
 import { API_ENDPOINTS } from "../constants/index.js";
-import { escapeHtml, parseJsonl, extractSummary, ArchiveFileState } from "./archive-constants.js";
+import { escapeHtml, parseJsonl, extractSummary, ArchiveFileState, showToast } from "./archive-constants.js";
 import { parseDelimitedText, formatClock, DRAFT_KEY as ASSIST_MARK_DRAFT_KEY } from "./archive-assist-mark.js";
+import { getParticipants } from "./archive-roster.js";
 import manager from "./archive-page-manager.js";
 
 const DRAFT_KEY = "archive_match_mark_draft_v1";
@@ -180,12 +181,46 @@ class MatchMarkManager {
     this._candidateCache = new Map(); // filename -> { entries, summary }
     this._expanded = new Set();
     this._loadingCandidates = new Set();
+    this._participantIndex = null; // 實驗代碼(小寫) -> { trackingId, participantName, stage }
   }
 
   async init(container) {
     this._container = container;
     this._render();
-    if (!this._serverFilesLoaded) await this._loadServerFiles();
+    const tasks = [this._ensureParticipantIndex().then(() => this._applyParticipantIndexToAllRows())];
+    if (!this._serverFilesLoaded) tasks.push(this._loadServerFiles());
+    await Promise.all(tasks);
+    this._render();
+  }
+
+  // 建立「實驗代碼 → 受試者ID／姓名」對照表（來自已存名單），只抓一次、快取起來，
+  // 讓只有實驗代碼欄的匯入表格也能自動帶出受試者資料，不用每次都手動比對。
+  // 姓名只在這裡查一次名單就地顯示用，不會存進伺服器的分析紀錄裡（那邊只存 trackingId）。
+  async _ensureParticipantIndex() {
+    if (this._participantIndex) return this._participantIndex;
+    const index = new Map();
+    const participants = await getParticipants();
+    for (const p of participants) {
+      const add = (expId, stage) => {
+        const key = String(expId || "").trim().toLowerCase();
+        if (key) index.set(key, { trackingId: p.trackingId, participantName: p.name || "", stage });
+      };
+      add(p.stage1?.experimentId, "1");
+      add(p.stage2?.attempt1?.experimentId, "2-1");
+      add(p.stage2?.attempt2?.experimentId, "2-2");
+    }
+    this._participantIndex = index;
+    return index;
+  }
+
+  // 依實驗代碼(idRaw)自動帶入受試者ID／姓名／階段；已有資料的列（例如 roster 匯入）不覆蓋
+  _applyParticipantIndexToAllRows() {
+    if (!this._participantIndex?.size) return;
+    for (const row of this._state.rows) {
+      if (row.trackingId != null) continue;
+      const hit = this._participantIndex.get(String(row.idRaw || "").trim().toLowerCase());
+      if (hit) { row.trackingId = hit.trackingId; row.participantName = hit.participantName; row.stage = hit.stage; }
+    }
   }
 
   // ── 伺服器溝通（獨立於 ArchivePageManager，僅在跳轉重新標記時借用其實例）──
@@ -286,7 +321,7 @@ class MatchMarkManager {
       this._saveDraft();
       this._render();
     } catch (err) {
-      alert(`載入名單失敗：${err.message}`);
+      showToast(`載入名單失敗：${err.message}`, "error");
     }
   }
 
@@ -320,13 +355,15 @@ class MatchMarkManager {
       assistState = raw ? JSON.parse(raw) : null;
     } catch { assistState = null; }
     if (!assistState || !assistState.rows?.length) {
-      alert("找不到「輔助標記」的暫存資料，請先在該分頁載入並標記過一次。");
+      showToast("找不到「輔助標記」的暫存資料，請先在該分頁載入並標記過一次。", "warning");
       return;
     }
 
     const headers = assistState.headers || [];
-    const trackingIdCol = guessAssistCol(headers, /^id$/i);
-    const experimentIdCol = guessAssistCol(headers, /experiment_id|實驗代碼|^代碼$/i);
+    const trackingIdCol = guessAssistCol(headers, /^(id|受試者id)$/i);
+    // 原本只認 experiment_id/實驗代碼/代碼，沒認到本專案實際在用的「實驗ID」寫法，
+    // 導致欄位猜不到、整個匯入直接中止（連花費時間都沒機會讀），格式一符合就沒問題
+    const experimentIdCol = guessAssistCol(headers, /experiment_?id|實驗(代碼|id)|^代碼$/i);
     const participantNameCol = guessAssistCol(headers, /participant_name|受試者姓名|^姓名$/i);
     const gestureCommandCol = guessAssistCol(headers, /gesture_command|手勢指令/i);
     const typeCol = guessAssistCol(headers, /^type$/i);
@@ -335,7 +372,7 @@ class MatchMarkManager {
     const durationCol = guessAssistCol(headers, /花費時間|duration|耗時/i);
 
     if (experimentIdCol < 0) {
-      alert("輔助標記的資料裡找不到可辨識的實驗代碼欄位（experiment_id）。");
+      showToast(`輔助標記的資料裡找不到可辨識的實驗代碼欄位。\n目前的欄位名稱是：${headers.join("、") || "（無）"}\n請把該欄位改名為「實驗ID」「實驗代碼」或「experiment_id」其中之一，再重新匯入。`, "error", 8000);
       return;
     }
 
@@ -377,7 +414,14 @@ class MatchMarkManager {
     }
     this._saveDraft();
     this._render();
-    alert(`已從「輔助標記」匯入（依人員 ID ＋ 實驗 ID 比對），共比對到 ${matched} 位受試者、合計 ${totalRows} 列手勢紀錄。`);
+    // 花費時間欄位沒被辨識到、或比對到的資料裡花費時間全是空白，都要明確提示，
+    // 不要讓「有匯入」跟「有花費時間可用」被誤會成同一件事
+    const durationWarning = durationCol < 0
+      ? "\n⚠ 沒有辨識到「花費時間」欄位，匯入的資料不含計時結果。"
+      : totalRows > 0 && this._state.rows.every(r => !r.assistDataRows?.some(a => a.duration))
+        ? "\n⚠ 有比對到資料，但花費時間欄位內容全是空白，請確認輔助標記那邊是否都已完成計時。"
+        : "";
+    showToast(`已從「輔助標記」匯入（依人員 ID ＋ 實驗 ID 比對），共比對到 ${matched} 位受試者、合計 ${totalRows} 列手勢紀錄。${durationWarning}`, durationWarning ? "warning" : "success", 6000);
   }
 
   _loadImportedRows(rows, sourceName) {
@@ -427,6 +471,7 @@ class MatchMarkManager {
         selectedFilenames: [],
       };
     });
+    this._applyParticipantIndexToAllRows();
     this._recomputeAllCandidates();
   }
 
@@ -636,7 +681,7 @@ class MatchMarkManager {
       this._saveDraft();
       this._render();
     } catch (err) {
-      alert(`儲存失敗：${err.message}`);
+      showToast(`儲存失敗：${err.message}`, "error");
     }
   }
 
@@ -652,9 +697,31 @@ class MatchMarkManager {
       else saved++;
     }
     if (conflicts) {
-      alert(`已儲存 ${saved} 筆，其中 ${conflicts} 筆有欄位衝突，請在下方列表中確認並儲存。`);
+      showToast(`已儲存 ${saved} 筆，其中 ${conflicts} 筆有欄位衝突，請在下方列表中確認並儲存。`, "warning", 6000);
     } else {
-      alert(`已全部儲存，共 ${saved} 筆${skipped ? `（${skipped} 筆非名單匯入列，已略過）` : ""}。`);
+      showToast(`已全部儲存，共 ${saved} 筆${skipped ? `（${skipped} 筆非名單匯入列，已略過）` : ""}。`, "success");
+    }
+  }
+
+  // 清除伺服器上這位受試者・這個階段已存的分析資料（比對／整合後發現資料有問題時用來重來一次），
+  // 同時把這一列的本機狀態退回「待確認」，不影響其他列。
+  async _clearSavedAnalysis(idx) {
+    const row = this._state.rows[idx];
+    if (!row || row.trackingId == null || !row.stage) return;
+    const label = row.groupLabel || row.participantName || row.idRaw || `受試者 ${row.trackingId}`;
+    if (!confirm(`確定要清除「${label}」已儲存的分析資料嗎？此動作無法復原。`)) return;
+    try {
+      const res = await this._authedFetch(`${getApiUrl()}${API_ENDPOINTS.ANALYSIS.DELETE(row.trackingId, row.stage)}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "刪除失敗");
+      row.decision = "pending";
+      row.matchedFilename = null;
+      row.assistDataRows = null;
+      row.saveConflict = null;
+      this._saveDraft();
+      this._render();
+    } catch (err) {
+      showToast(`清除失敗：${err.message}`, "error");
     }
   }
 
@@ -729,7 +796,7 @@ class MatchMarkManager {
     this._render();
     const hint = `${row.idRaw}${row.combo ? " · " + row.combo : ""}`;
     navigator.clipboard?.writeText(hint).catch(() => {});
-    alert(`已將「${hint}」標記為需重新標記，識別碼已複製到剪貼簿，可在「簡易標記」錄製時對照。`);
+    showToast(`已將「${hint}」標記為需重新標記，識別碼已複製到剪貼簿，可在「簡易標記」錄製時對照。`, "success", 6000);
     document.querySelector("[data-tab=\"quick-remark\"]")?.click();
   }
 
@@ -890,10 +957,11 @@ class MatchMarkManager {
 
     return `<div class="match-mark-row${expanded ? " is-expanded" : ""}" data-row-idx="${idx}">
       <div class="match-mark-row-head" data-match-toggle="${idx}">
-        <span class="match-mark-row-id">${row.groupLabel ? escapeHtml(row.groupLabel) : escapeHtml(row.idRaw || "（未填）")}</span>
-        <span class="match-mark-row-meta">${row.date ? escapeHtml(row.date) : "—"}${row.groupLabel ? " · 代碼 " + escapeHtml(row.idRaw) : ""}${row.combo ? " · " + escapeHtml(row.combo) : ""}${row.count != null ? ` · 預期 ${row.count} 次` : ""}${row.matchedFilename ? " · 已讀入 " + escapeHtml(row.matchedFilename) : ""}</span>
+        <span class="match-mark-row-id">${row.groupLabel ? escapeHtml(row.groupLabel) : row.participantName ? `${escapeHtml(row.participantName)}（${escapeHtml(row.idRaw || "")}）` : escapeHtml(row.idRaw || "（未填）")}</span>
+        <span class="match-mark-row-meta">${row.date ? escapeHtml(row.date) : "—"}${row.groupLabel ? " · 代碼 " + escapeHtml(row.idRaw) : ""}${!row.groupLabel && row.participantName ? " · 受試者 " + escapeHtml(String(row.trackingId ?? "")) : ""}${row.combo ? " · " + escapeHtml(row.combo) : ""}${row.count != null ? ` · 預期 ${row.count} 次` : ""}${row.matchedFilename ? " · 已讀入 " + escapeHtml(row.matchedFilename) : ""}</span>
         <span class="match-mark-row-cand-count">${row.stage === "1" ? "階段一無日誌檔（正常）" : noCandidates ? "無候選" : `${row.candidates.length} 個候選`}</span>
         <span class="match-mark-decision-badge ${decisionClass}">${decisionLabel}</span>
+        ${row.trackingId != null && row.stage ? `<button class="archive-action-btn archive-action-btn--sm archive-action-btn--danger" data-match-clear-saved="${idx}" title="刪除伺服器上這位受試者・這個階段已存的分析資料">清除已儲存資料</button>` : ""}
         <span class="match-mark-row-caret">${expanded ? "▾" : "▸"}</span>
       </div>
       ${assistHtml}
@@ -1029,6 +1097,8 @@ class MatchMarkManager {
       btn.addEventListener("click", e => { e.stopPropagation(); this._gotoQuickRemark(Number(btn.dataset.matchGotoRemark)); }));
     c.querySelectorAll("[data-match-skip]").forEach(btn =>
       btn.addEventListener("click", e => { e.stopPropagation(); this._skipRow(Number(btn.dataset.matchSkip)); }));
+    c.querySelectorAll("[data-match-clear-saved]").forEach(btn =>
+      btn.addEventListener("click", e => { e.stopPropagation(); this._clearSavedAnalysis(Number(btn.dataset.matchClearSaved)); }));
 
     c.querySelectorAll("[data-match-conflict]").forEach(radio =>
       radio.addEventListener("change", e => {

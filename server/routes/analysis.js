@@ -30,7 +30,8 @@ const __dirname = path.dirname(__filename);
 const ANALYSIS_DIR = path.join(__dirname, "../../runtime/analysis");
 const VALID_STAGES = new Set(["1", "2-1", "2-2"]);
 const MERGE_FIELDS = ["experimentId", "date", "matchedFilename"];
-const ATTEMPT_FIELDS = ["participantName", "gestureCommand", "type", "typeRaw", "note", "duration"];
+// 受試者姓名只存在名單（participants.json），這裡不重複存放；輸出時一律用 trackingId 去名單查
+const ATTEMPT_FIELDS = ["gestureCommand", "type", "typeRaw", "note", "duration"];
 const MAX_ATTEMPTS = 500;
 
 async function ensureDir() {
@@ -161,6 +162,34 @@ router.post("/save", requireAdminToken, async (req, res) => {
     res.json({ success: true, filename, record });
   } catch (error) {
     Logger.error("[Analysis] Save error:", error.message);
+    res.status(500).json({ success: false, error: "伺服器內部錯誤" });
+  }
+});
+
+/**
+ * DELETE /api/analysis/:trackingId/:stage
+ * 刪除單一受試者 × 單一階段已存的分析用原始資料（比對名單那邊發現資料有問題時用來重來一次）
+ */
+router.delete("/:trackingId/:stage", requireAdminToken, async (req, res) => {
+  try {
+    const trackingIdNum = Number(req.params.trackingId);
+    const { stage } = req.params;
+    if (!Number.isInteger(trackingIdNum) || trackingIdNum < 0) {
+      return res.status(400).json({ success: false, error: "trackingId 必須為整數" });
+    }
+    if (!VALID_STAGES.has(stage)) {
+      return res.status(400).json({ success: false, error: "stage 必須為 1、2-1 或 2-2" });
+    }
+
+    const filepath = path.join(ANALYSIS_DIR, `${trackingIdNum}_${stage}.json`);
+    try {
+      await fs.unlink(filepath);
+    } catch (err) {
+      if (err.code !== "ENOENT") throw err; // 檔案本來就不存在視為已刪除，不算錯誤
+    }
+    res.json({ success: true });
+  } catch (error) {
+    Logger.error("[Analysis] Delete error:", error.message);
     res.status(500).json({ success: false, error: "伺服器內部錯誤" });
   }
 });

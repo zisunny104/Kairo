@@ -147,6 +147,28 @@ export function escapeHtmlText(str) {
   return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+// ── 輕量提示（取代會中斷操作的 alert()）─────────────────────────────────────
+const TOAST_COLORS = { error: "#f44336", success: "#4caf50", warning: "#ff9800", info: "#667eea" };
+
+export function showToast(message, type = "error", duration = 4000) {
+  if (!message) return;
+  const toast = document.createElement("div");
+  toast.textContent = message;
+  Object.assign(toast.style, {
+    position: "fixed", top: "20px", right: "20px", zIndex: "9999",
+    padding: "12px 20px", borderRadius: "8px", fontFamily: "sans-serif",
+    fontSize: "14px", color: "white", maxWidth: "360px", whiteSpace: "pre-line",
+    background: TOAST_COLORS[type] || TOAST_COLORS.error,
+    boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+    transition: "opacity 0.3s",
+  });
+  document.body.appendChild(toast);
+  setTimeout(() => {
+    toast.style.opacity = "0";
+    setTimeout(() => toast.remove(), 300);
+  }, duration);
+}
+
 export function colorizeJson(jsonStr) {
   return escapeHtmlText(jsonStr)
     .replace(/"([^"]+)":/g, "<span class=\"raw-key\">\"$1\"</span>:")

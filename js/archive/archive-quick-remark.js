@@ -6,6 +6,7 @@
 
 import { getApiUrl } from "../core/url-utils.js";
 import { API_ENDPOINTS } from "../constants/api-constants.js";
+import { showToast } from "./archive-constants.js";
 
 const CFG_KEY = "qr_judgment_config";
 const QR_DEBOUNCE_MS = 250;   // 同一顆按鈕在此毫秒內重複觸發視為誤按，忽略
@@ -686,7 +687,7 @@ class QuickRemarkManager {
       serverOk = res.ok && data.success;
       if (!serverOk) throw new Error(data.error || `HTTP ${res.status}`);
     } catch (err) {
-      alert(`存到伺服器失敗：${err.message}\n仍會下載到本機作為備份。`);
+      showToast(`存到伺服器失敗：${err.message}\n仍會下載到本機作為備份。`, "error", 8000);
     }
 
     // 2) 下載到本機作為備份

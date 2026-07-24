@@ -4,13 +4,14 @@
  */
 
 import * as XLSX from "../vendor/xlsx.mjs";
-import { escapeHtml } from "./archive-constants.js";
+import { escapeHtml, showToast } from "./archive-constants.js";
 import { downloadXlsx, downloadCsv } from "../core/xlsx-export.js";
 import { getApiUrl } from "../core/url-utils.js";
 import { getAdminToken, clearAdminToken } from "../core/admin-auth.js";
 import { API_ENDPOINTS } from "../constants/index.js";
 
 export const DRAFT_KEY = "archive_assist_mark_draft_v1";
+const UI_STATE_KEY = "archive_assist_mark_ui_v1";
 const EMPTY_TEXT = "";
 
 function nowIso() {
@@ -52,6 +53,8 @@ export function parseDelimitedText(text) {
     .filter(row => row.some(cell => cell !== EMPTY_TEXT));
 }
 
+const COLLAPSE_CHEVRON_SVG = `<svg class="assist-mark-collapse-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
+
 function sanitizeCellText(value) {
   return value == null ? "" : String(value);
 }
@@ -83,7 +86,7 @@ function createDefaultState() {
     currentRow: 0,
     currentCol: 0,
     activeTimer: null,
-    pendingResult: null, // 已停止但尚未選擇「儲存」或「重錄」的計時結果 { rowIndex, startTs, endTs }
+    pendingResult: null, // 重錄後已停止但尚未選擇「儲存」或「取消」的計時結果 { rowIndex, startTs, endTs }
     recordCol: null,
     durationCol: null,
     sortCol: null,
@@ -99,9 +102,38 @@ class AssistMarkManager {
     this._container = null;
     this._state = this._loadDraft() || createDefaultState();
     this._migrateLegacyDraft();
+    this._migrateColumnOrder();
+    this._uiState = this._loadUiState();
     this._keyHandler = null;
     this._saveTimer = null;
     this._syncTimer = null;
+  }
+
+  // 三個可收合區塊（貼上區／草稿暫存與說明／操作按鈕）的展開狀態，跟草稿資料分開存，
+  // 純粹是本機顯示偏好，不需要跟伺服器同步。
+  _loadUiState() {
+    const defaults = { paste: false, status: false, actions: false };
+    try {
+      const raw = localStorage.getItem(UI_STATE_KEY);
+      if (!raw) return defaults;
+      return { ...defaults, ...JSON.parse(raw) };
+    } catch {
+      return defaults;
+    }
+  }
+
+  _saveUiState() {
+    try {
+      localStorage.setItem(UI_STATE_KEY, JSON.stringify(this._uiState));
+    } catch {
+      // localStorage 不可用時，收合狀態就不記住，仍可正常操作
+    }
+  }
+
+  _toggleUiSection(key) {
+    this._uiState[key] = !this._uiState[key];
+    this._saveUiState();
+    this._render();
   }
 
   // 相容改版前（沒有「錄製」「花費時間」欄位）的舊草稿：直接在既有資料後面補上這兩欄，
@@ -109,9 +141,9 @@ class AssistMarkManager {
   _migrateLegacyDraft() {
     const st = this._state;
     if (!st.rows?.length || (st.recordCol != null && st.durationCol != null)) return;
-    const recordCol = st.headers.length;
-    const durationCol = st.headers.length + 1;
-    st.headers = [...st.headers, "錄製", "花費時間"];
+    const durationCol = st.headers.length;
+    const recordCol = st.headers.length + 1;
+    st.headers = [...st.headers, "花費時間", "錄製"];
     st.rows = st.rows.map(row => { const copy = row.slice(); copy.push(EMPTY_TEXT, EMPTY_TEXT); return copy; });
     st.recordCol = recordCol;
     st.durationCol = durationCol;
@@ -120,12 +152,30 @@ class AssistMarkManager {
     this._saveDraft();
   }
 
+  // 相容改版前「錄製」在「花費時間」前面的舊欄位順序：把兩欄內容互換位置，
+  // 讓「花費時間」緊跟原始資料、「錄製」按鈕移到表格最後一欄，且不遺失已錄好的時間。
+  _migrateColumnOrder() {
+    const st = this._state;
+    if (st.recordCol == null || st.durationCol == null || st.recordCol >= st.durationCol) return;
+    const { recordCol, durationCol } = st;
+    [st.headers[recordCol], st.headers[durationCol]] = [st.headers[durationCol], st.headers[recordCol]];
+    st.rows = st.rows.map(row => {
+      const copy = row.slice();
+      [copy[recordCol], copy[durationCol]] = [copy[durationCol], copy[recordCol]];
+      return copy;
+    });
+    st.durationCol = recordCol;
+    st.recordCol = durationCol;
+    this._saveDraft();
+  }
+
   async init(container) {
     this._container = container;
     this._render();
-    this._bindGlobalKeys();
     this._startClock();
-    this._loadFromServer();
+    // 先等伺服器草稿同步完成再開放鍵盤操作，避免在同步的空檔誤動到即將被伺服器版本蓋掉的本機資料
+    await this._loadFromServer();
+    this._bindGlobalKeys();
   }
 
   async _authedFetch(url, opts = {}) {
@@ -149,6 +199,7 @@ class AssistMarkManager {
       if (!data.success || !data.draft) return;
       this._state = data.draft;
       this._migrateLegacyDraft();
+      this._migrateColumnOrder();
       this._saveLocalDraft();
       this._render();
     } catch {
@@ -235,12 +286,12 @@ class AssistMarkManager {
   _setCurrent(row, col) {
     const maxRow = Math.max(0, this._state.rows.length - 1);
     const maxCol = Math.max(0, this._getColumnCount() - 1);
+    const nextCol = Math.min(Math.max(col, 0), maxCol);
     this._state.currentRow = Math.min(Math.max(row, 0), maxRow);
-    this._state.currentCol = Math.min(Math.max(col, 0), maxCol);
+    this._state.currentCol = nextCol;
     this._saveDraft();
     this._render();
-    const cell = this._container?.querySelector(`[data-cell-row="${this._state.currentRow}"][data-cell-col="${this._state.currentCol}"]`);
-    cell?.focus();
+    this._focusCurrentCell();
   }
 
   _getColumnCount() {
@@ -270,12 +321,12 @@ class AssistMarkManager {
     // 若來源資料本身已經有「花費時間」欄（例如最終分析匯出的檔案），直接沿用該欄當計時欄，
     // 不再另外加一欄重複的「花費時間」。
     const existingDurationCol = hasHeader ? baseHeaders.findIndex(h => /花費時間|duration|耗時/i.test(String(h))) : -1;
-    const recordCol = baseHeaders.length;
-    const durationCol = existingDurationCol >= 0 ? existingDurationCol : recordCol + 1;
+    const durationCol = existingDurationCol >= 0 ? existingDurationCol : baseHeaders.length;
+    const recordCol = existingDurationCol >= 0 ? baseHeaders.length : baseHeaders.length + 1;
     const rowsWithTime = normalized.map(row => {
       const copy = row.slice();
-      copy.push(EMPTY_TEXT);
-      if (existingDurationCol < 0) copy.push(EMPTY_TEXT);
+      if (existingDurationCol < 0) copy.push(EMPTY_TEXT); // 花費時間
+      copy.push(EMPTY_TEXT); // 錄製
       return copy;
     });
 
@@ -284,7 +335,7 @@ class AssistMarkManager {
       headerMode,
       title: sourceName || `匯入資料 ${nowIso()}`,
       sourceName,
-      headers: existingDurationCol >= 0 ? [...baseHeaders, "錄製"] : [...baseHeaders, "錄製", "花費時間"],
+      headers: existingDurationCol >= 0 ? [...baseHeaders, "錄製"] : [...baseHeaders, "花費時間", "錄製"],
       rows: rowsWithTime,
       recordCol,
       durationCol,
@@ -320,7 +371,7 @@ class AssistMarkManager {
       }
       if (e.code === "Escape") {
         e.preventDefault();
-        if (this._state.pendingResult) { this._redoPending(); return; }
+        if (this._state.pendingResult) { this._cancelPending(); return; }
         this._cancelTimer();
         return;
       }
@@ -341,18 +392,21 @@ class AssistMarkManager {
   }
 
   // 開始／停止錄製：每列自己的「錄製」按鈕控制，同時間只能有一列在錄製或待確認。
-  // 停止後不直接寫入表格，先進入「待確認」狀態，由使用者在同一格按「儲存」或「重錄」。
+  // 該列第一次錄製（原本沒有花費時間）：停止後自動寫入，不需再按儲存。
+  // 該列已有花費時間（重錄）：停止後先進入「待確認」，由使用者選擇「儲存」（覆蓋）或「取消」（保留原值）。
   _startTimer(rowIndex) {
     if (this._state.pendingResult || this._state.activeTimer) return; // 已有其他列在錄製或待確認
-    if (!this._state.rows[rowIndex]) return;
-    this._state.activeTimer = { rowIndex, startTs: Date.now() };
+    const row = this._state.rows[rowIndex];
+    if (!row) return;
+    const hadExisting = sanitizeCellText(row[this._state.durationCol]) !== "";
+    this._state.activeTimer = { rowIndex, startTs: Date.now(), hadExisting };
     this._saveDraft();
     this._render();
   }
 
   // Space/Enter 快捷鍵：對目前選取列開始計時，或結束目前正在錄製的那一列
   _toggleTimer() {
-    if (this._state.pendingResult) return; // 尚有未確認的計時結果，需先儲存或重錄
+    if (this._state.pendingResult) return; // 尚有未確認的計時結果，需先儲存或取消
     if (this._state.activeTimer) {
       this._stopTimer();
       return;
@@ -363,10 +417,19 @@ class AssistMarkManager {
   _stopTimer() {
     const timer = this._state.activeTimer;
     if (!timer) return;
-    this._state.pendingResult = { rowIndex: timer.rowIndex, startTs: timer.startTs, endTs: Date.now() };
+    const endTs = Date.now();
     this._state.activeTimer = null;
+    if (timer.hadExisting) {
+      this._state.pendingResult = { rowIndex: timer.rowIndex, startTs: timer.startTs, endTs };
+      this._saveDraft();
+      this._render();
+      return;
+    }
+    this._writeDuration(timer.rowIndex, endTs - timer.startTs);
+    this._advanceToNextRow(timer.rowIndex);
     this._saveDraft();
     this._render();
+    this._focusCurrentCell();
   }
 
   // Escape：錄製中尚未停止時，直接取消（不留下任何暫存結果）
@@ -377,26 +440,47 @@ class AssistMarkManager {
     this._render();
   }
 
-  // 儲存：把待確認的花費時間寫入「花費時間」欄
+  _writeDuration(rowIndex, ms) {
+    const row = this._state.rows[rowIndex];
+    if (!row) return;
+    const { durationCol } = this._state;
+    row[durationCol != null ? durationCol : row.length - 1] = formatClock(ms);
+  }
+
+  // 錄製完成後自動選到下一列需要錄製的「開始錄製」按鈕（跳過已有花費時間的列），
+  // 焦點直接停在按鈕上，方便連續按 Enter/Space 錄製下一筆
+  _advanceToNextRow(fromRowIndex) {
+    const { rows, recordCol, durationCol } = this._state;
+    const col = recordCol != null ? recordCol : (durationCol != null ? durationCol : this._getColumnCount() - 1);
+    for (let i = fromRowIndex + 1; i < rows.length; i++) {
+      if (sanitizeCellText(rows[i][col]) === "") { this._state.currentRow = i; this._state.currentCol = col; return; }
+    }
+    for (let i = 0; i < fromRowIndex; i++) {
+      if (sanitizeCellText(rows[i][col]) === "") { this._state.currentRow = i; this._state.currentCol = col; return; }
+    }
+  }
+
+  _focusCurrentCell() {
+    const cell = this._container?.querySelector(`[data-cell-row="${this._state.currentRow}"][data-cell-col="${this._state.currentCol}"]`);
+    cell?.focus();
+  }
+
+  // 儲存：重錄情況下，把待確認的花費時間寫入「花費時間」欄（覆蓋原值）
   _confirmPending() {
     const p = this._state.pendingResult;
     if (!p) return;
-    const row = this._state.rows[p.rowIndex];
-    if (row) {
-      const { durationCol } = this._state;
-      row[durationCol != null ? durationCol : row.length - 1] = formatClock(p.endTs - p.startTs);
-    }
+    this._writeDuration(p.rowIndex, p.endTs - p.startTs);
     this._state.pendingResult = null;
+    this._advanceToNextRow(p.rowIndex);
     this._saveDraft();
     this._render();
+    this._focusCurrentCell();
   }
 
-  // 重錄：捨棄待確認結果，立刻對同一列重新開始計時
-  _redoPending() {
-    const p = this._state.pendingResult;
-    if (!p) return;
+  // 取消：捨棄待確認結果，保留該列原本的花費時間，不重新計時
+  _cancelPending() {
+    if (!this._state.pendingResult) return;
     this._state.pendingResult = null;
-    this._state.activeTimer = { rowIndex: p.rowIndex, startTs: Date.now() };
     this._saveDraft();
     this._render();
   }
@@ -409,7 +493,7 @@ class AssistMarkManager {
 
   _sortByColumn(colIndex) {
     if (this._state.activeTimer || this._state.pendingResult) {
-      alert("請先儲存或重錄目前的計時結果，再進行排序。");
+      showToast("請先儲存或取消目前的計時結果，再進行排序。", "warning");
       return;
     }
     const dir = this._state.sortCol === colIndex && this._state.sortDir === "asc" ? "desc" : "asc";
@@ -474,6 +558,15 @@ class AssistMarkManager {
     downloadXlsx([this._state.headers, ...this._state.rows], this._state.exportName || "assist_mark", "輔助標記");
   }
 
+  _focusPasteBox() {
+    if (this._uiState.paste) {
+      this._uiState.paste = false;
+      this._saveUiState();
+      this._render();
+    }
+    this._container?.querySelector("#assistMarkPasteBox")?.focus();
+  }
+
   _resetAll() {
     this._state = createDefaultState();
     this._clearDraft();
@@ -483,6 +576,7 @@ class AssistMarkManager {
 
   _render() {
     if (!this._container) return;
+    const scrollTop = this._container.querySelector(".assist-mark-table-wrap")?.scrollTop ?? 0;
     const st = this._state;
     const hasData = st.rows.length > 0;
     this._ensureShape();
@@ -507,6 +601,7 @@ class AssistMarkManager {
       </div>
     </div>`;
 
+    const ui = this._uiState;
     this._container.innerHTML = `
       <div class="assist-mark-shell">
         <div class="assist-mark-topbar">
@@ -514,21 +609,30 @@ class AssistMarkManager {
             <div class="assist-mark-title">輔助標記</div>
             <div class="assist-mark-subtitle">${escapeHtml(st.title || "尚未載入資料")}</div>
           </div>
-          <div class="assist-mark-actions">
-            ${headerModeSelect}
-            <button class="archive-action-btn" data-assist-action="paste">貼上內容</button>
-            <button class="archive-action-btn" data-assist-action="file">選擇檔案</button>
-            <button class="archive-action-btn" data-assist-action="export-csv" ${hasData ? "" : "disabled"}>下載 CSV</button>
-            <button class="archive-action-btn" data-assist-action="export-xlsx" ${hasData ? "" : "disabled"}>下載 Excel</button>
-            <button class="archive-action-btn archive-action-btn--danger" data-assist-action="reset" ${hasData ? "" : "disabled"}>清空</button>
+          <div class="assist-mark-actions-group">
+            <button type="button" class="assist-mark-collapse-btn" data-assist-toggle="actions" aria-expanded="${ui.actions ? "false" : "true"}" title="收合/展開操作按鈕">${COLLAPSE_CHEVRON_SVG}操作按鈕</button>
+            <div class="assist-mark-actions${ui.actions ? " is-collapsed" : ""}">
+              ${headerModeSelect}
+              <button class="archive-action-btn" data-assist-action="paste">貼上內容</button>
+              <button class="archive-action-btn" data-assist-action="file">選擇檔案</button>
+              <button class="archive-action-btn" data-assist-action="export-csv" ${hasData ? "" : "disabled"}>下載 CSV</button>
+              <button class="archive-action-btn" data-assist-action="export-xlsx" ${hasData ? "" : "disabled"}>下載 Excel</button>
+              <button class="archive-action-btn archive-action-btn--danger" data-assist-action="reset" ${hasData ? "" : "disabled"}>清空</button>
+            </div>
           </div>
         </div>
         <div class="assist-mark-status-bar">
-          <span data-assist-status>草稿已暫存</span>
-          <span class="assist-mark-help">每列右側「錄製」欄可開始／停止計時，停止後在同一格選擇儲存或重錄；方向鍵切格、Tab 連續移動、Space/Enter 開始或結束計時、Esc 取消計時</span>
+          <button type="button" class="assist-mark-collapse-btn" data-assist-toggle="status" aria-expanded="${ui.status ? "false" : "true"}" title="收合/展開草稿與說明">${COLLAPSE_CHEVRON_SVG}草稿與說明</button>
+          <div class="assist-mark-status-content${ui.status ? " is-collapsed" : ""}">
+            <span data-assist-status>草稿已暫存</span>
+            <span class="assist-mark-help">每列右側「錄製」欄可開始／停止計時：第一次錄製停止後自動儲存並跳到下一筆；重錄則停止後選擇儲存或取消；方向鍵切格、Tab 連續移動、Space/Enter 開始或結束計時、Esc 取消</span>
+          </div>
           <input type="file" id="assistMarkFileInput" accept=".xlsx,.xls,.csv,.txt" hidden>
         </div>
-        <textarea class="assist-mark-pastebox" id="assistMarkPasteBox" placeholder="在這裡直接貼上 Excel 複製的表格內容，或先點選「貼上內容」再貼上。"></textarea>
+        <div class="assist-mark-paste-section">
+          <button type="button" class="assist-mark-collapse-btn" data-assist-toggle="paste" aria-expanded="${ui.paste ? "false" : "true"}" title="收合/展開貼上區">${COLLAPSE_CHEVRON_SVG}貼上內容</button>
+          <textarea class="assist-mark-pastebox${ui.paste ? " is-collapsed" : ""}" id="assistMarkPasteBox" placeholder="在這裡直接貼上 Excel 複製的表格內容，或先點選「貼上內容」再貼上。"></textarea>
+        </div>
         <div class="assist-mark-table-wrap">
           ${tableHtml}
         </div>
@@ -537,22 +641,27 @@ class AssistMarkManager {
     this._bindEvents();
     this._updateStatusText();
     this._updateTimerText();
+    const wrap = this._container.querySelector(".assist-mark-table-wrap");
+    if (wrap) wrap.scrollTop = scrollTop;
   }
 
-  // 「錄製」欄：每列自己的計時控制按鈕（開始／停止／儲存／重錄）
+  // 「錄製」欄：每列自己的計時控制按鈕（開始／重錄／停止／儲存／取消）
+  // 主要動作按鈕加上 data-cell-row/col，方向鍵/Tab 移到這一格時才能像其他格子一樣真的把瀏覽器焦點停在按鈕上（無障礙導覽）
   _renderRecordCell(rowIndex) {
     const st = this._state;
+    const cellAttrs = `data-cell-row="${rowIndex}" data-cell-col="${st.recordCol}"`;
     const isRecording = st.activeTimer?.rowIndex === rowIndex;
     const isPending = st.pendingResult?.rowIndex === rowIndex;
     if (isRecording) {
-      return `<button class="archive-action-btn archive-action-btn--sm" data-assist-stop="${rowIndex}">■ 停止</button>`;
+      return `<button class="archive-action-btn archive-action-btn--sm" ${cellAttrs} data-assist-stop="${rowIndex}">■ 停止</button>`;
     }
     if (isPending) {
-      return `<button class="archive-action-btn archive-action-btn--sm" data-assist-confirm="${rowIndex}">儲存</button>
-        <button class="archive-action-btn archive-action-btn--sm archive-action-btn--secondary" data-assist-redo="${rowIndex}">重錄</button>`;
+      return `<button class="archive-action-btn archive-action-btn--sm" ${cellAttrs} data-assist-confirm="${rowIndex}">儲存</button>
+        <button class="archive-action-btn archive-action-btn--sm archive-action-btn--secondary" data-assist-cancel="${rowIndex}">取消</button>`;
     }
     const busyElsewhere = !!(st.activeTimer || st.pendingResult);
-    return `<button class="archive-action-btn archive-action-btn--sm" data-assist-start="${rowIndex}" ${busyElsewhere ? "disabled" : ""}>● 開始錄製</button>`;
+    const hasExisting = sanitizeCellText(st.rows[rowIndex]?.[st.durationCol]) !== "";
+    return `<button class="archive-action-btn archive-action-btn--sm" ${cellAttrs} data-assist-start="${rowIndex}" ${busyElsewhere ? "disabled" : ""}>${hasExisting ? "↻ 重錄" : "● 開始錄製"}</button>`;
   }
 
   _renderTable() {
@@ -580,7 +689,8 @@ class AssistMarkManager {
             const isCurrentRow = rowIndex === st.currentRow;
             const isRecording = st.activeTimer?.rowIndex === rowIndex;
             const isPending = st.pendingResult?.rowIndex === rowIndex;
-            const rowState = isRecording ? " is-timing-row" : isPending ? " is-pending-row" : "";
+            const isUnrecorded = !isRecording && sanitizeCellText(row[durationCol]) === "";
+            const rowState = isRecording ? " is-timing-row" : isPending ? " is-pending-row" : isUnrecorded ? " is-unrecorded-row" : "";
             return `<tr class="${isCurrentRow ? "is-current-row" : ""}${rowState}">
               <td class="assist-mark-row-index">${rowIndex + 1}</td>
               ${headers.map((_, colIndex) => {
@@ -619,11 +729,15 @@ class AssistMarkManager {
       btn.addEventListener("click", async () => {
         const action = btn.dataset.assistAction;
         if (action === "file") fileInput?.click();
-        if (action === "paste") pasteBox?.focus();
+        if (action === "paste") this._focusPasteBox();
         if (action === "export-csv") this._exportCsv();
         if (action === "export-xlsx") this._exportXlsx();
         if (action === "reset") this._resetAll();
       });
+    });
+
+    this._container?.querySelectorAll("[data-assist-toggle]").forEach(btn => {
+      btn.addEventListener("click", () => this._toggleUiSection(btn.dataset.assistToggle));
     });
 
     this._container?.querySelectorAll("[data-assist-start]").forEach(btn =>
@@ -632,8 +746,8 @@ class AssistMarkManager {
       btn.addEventListener("click", e => { e.stopPropagation(); this._stopTimer(); }));
     this._container?.querySelectorAll("[data-assist-confirm]").forEach(btn =>
       btn.addEventListener("click", e => { e.stopPropagation(); this._confirmPending(); }));
-    this._container?.querySelectorAll("[data-assist-redo]").forEach(btn =>
-      btn.addEventListener("click", e => { e.stopPropagation(); this._redoPending(); }));
+    this._container?.querySelectorAll("[data-assist-cancel]").forEach(btn =>
+      btn.addEventListener("click", e => { e.stopPropagation(); this._cancelPending(); }));
 
     fileInput?.addEventListener("change", () => {
       const file = fileInput.files?.[0];

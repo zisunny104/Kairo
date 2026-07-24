@@ -5,7 +5,7 @@
 import { Logger } from "../core/console-manager.js";
 import { UIPopover } from "../ui/popover.js";
 import { API_ENDPOINTS } from "../constants/index.js";
-import { ArchiveFileState, parseJsonl, escapeHtml, stripColorTags } from "./archive-constants.js";
+import { ArchiveFileState, parseJsonl, escapeHtml, stripColorTags, showToast } from "./archive-constants.js";
 
 export const archiveSidebarMethods = {
 
@@ -494,14 +494,14 @@ export const archiveSidebarMethods = {
     if (!confirm(`確定要從伺服器刪除「${filename}」嗎？此操作無法復原。`)) return;
     try {
       const res  = await this._authedFetch(`${this._api}${API_ENDPOINTS.RECORD.DELETE(filename)}`, { method: "DELETE" });
-      if (!res.ok) { alert(`刪除失敗 (${res.status})`); return; }
+      if (!res.ok) { showToast(`刪除失敗 (${res.status})`, "error"); return; }
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "刪除失敗");
       if (this._file?.title === filename) this._file = null;
       await this._loadServerFiles();
     } catch (err) {
       Logger.error("[Archive] 刪除失敗:", err.message);
-      alert(`刪除失敗：${err.message}`);
+      showToast(`刪除失敗：${err.message}`, "error");
     }
   },
 
@@ -534,7 +534,7 @@ export const archiveSidebarMethods = {
       await this._loadServerFiles();
     } catch (err) {
       Logger.error("[Archive] 上傳失敗:", err.message);
-      alert(`上傳失敗：${err.message}`);
+      showToast(`上傳失敗：${err.message}`, "error");
     } finally {
       if (btn) { btn.disabled = false; }
     }
@@ -587,7 +587,7 @@ export const archiveSidebarMethods = {
       this._renderAll();
     } catch (err) {
       Logger.error("[Archive] 另存失敗:", err.message);
-      alert(`另存失敗：${err.message}`);
+      showToast(`另存失敗：${err.message}`, "error");
       const b = document.querySelector("[data-action='save-file']");
       if (b) { b.disabled = false; b.textContent = "另存新檔"; }
     }
@@ -611,7 +611,7 @@ export const archiveSidebarMethods = {
       this._renderAll();
     } catch (err) {
       Logger.error("[Archive] 上傳失敗:", err.message);
-      alert(`上傳失敗：${err.message}`);
+      showToast(`上傳失敗：${err.message}`, "error");
       if (btn) { btn.disabled = false; btn.textContent = "上傳至伺服器"; }
     }
   },

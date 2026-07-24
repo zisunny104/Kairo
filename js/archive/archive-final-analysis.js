@@ -7,8 +7,9 @@ import { getApiUrl } from "../core/url-utils.js";
 import { getAdminToken, clearAdminToken } from "../core/admin-auth.js";
 import { API_ENDPOINTS } from "../constants/index.js";
 import { downloadXlsx, downloadCsv } from "../core/xlsx-export.js";
-import { escapeHtml } from "./archive-constants.js";
-import { DurationStatsCard, AgreementRateCard } from "./archive-final-analysis-cards.js";
+import { escapeHtml, showToast } from "./archive-constants.js";
+import { getParticipants, getParticipantNameMap } from "./archive-roster.js";
+import { GestureAgreementCard, ErrorRateComparisonCard, ReactionTimeCard } from "./archive-final-analysis-cards.js";
 
 const STAGE_LABELS = { "1": "第一階段", "2-1": "第二階段（第一次）", "2-2": "第二階段（第二次）" };
 const ROW_HEADERS = ["idx", "id", "experiment_id", "participant_name", "gesture_command", "type", "type_raw", "note", "花費時間"];
@@ -22,37 +23,8 @@ class FinalAnalysisManager {
     this._loading = false;
     // 內容區有兩種模式：分析卡片（預設）／原始資料預覽（按上方任一「預覽」按鈕才切換）
     this._contentMode = "analysis";
-    // 各分析項目各自一張卡片，之後要加新的分析項目類型就在這裡追加即可；
-    // 每張卡片同時是可複製的「模板」——使用者可用「新增卡片」按同一類型再開一張，
-    // 各自獨立設定範圍/指標/檢視/標題後分別匯出成論文用圖
-    this._cards = [this._makeDurationCard()];
-  }
-
-  _makeDurationCard() {
-    const card = new DurationStatsCard();
-    card.onRemove = () => this._removeCard(card);
-    return card;
-  }
-
-  _addDurationCard() {
-    this._cards.push(this._makeDurationCard());
-    this._render();
-  }
-
-  _makeAgreementCard() {
-    const card = new AgreementRateCard();
-    card.onRemove = () => this._removeCard(card);
-    return card;
-  }
-
-  _addAgreementCard() {
-    this._cards.push(this._makeAgreementCard());
-    this._render();
-  }
-
-  _removeCard(card) {
-    this._cards = this._cards.filter(c => c !== card);
-    this._render();
+    // 三張分析卡片固定存在，之後要加新的分析項目類型就在這裡追加一個 new XxxCard() 即可
+    this._cards = [new GestureAgreementCard(), new ErrorRateComparisonCard(), new ReactionTimeCard()];
   }
 
   init(container) {
@@ -74,20 +46,14 @@ class FinalAnalysisManager {
 
   // 依階段統計名單裡「預期應該有」的受試者數，用來偵測預覽時是否還有未完成比對／儲存的筆數
   async _countExpectedForStage(stage) {
-    try {
-      const res = await this._authedFetch(`${getApiUrl()}${API_ENDPOINTS.ROSTER.PARTICIPANTS}`);
-      const data = await res.json();
-      if (!data.success) return null;
-      const hasStage = p => {
-        if (stage === "1") return !!p.stage1?.experimentId;
-        if (stage === "2-1") return !!p.stage2?.attempt1?.experimentId;
-        if (stage === "2-2") return !!p.stage2?.attempt2?.experimentId;
-        return false;
-      };
-      return (data.participants || []).filter(hasStage).length;
-    } catch {
-      return null;
-    }
+    const participants = await getParticipants();
+    const hasStage = p => {
+      if (stage === "1") return !!p.stage1?.experimentId;
+      if (stage === "2-1") return !!p.stage2?.attempt1?.experimentId;
+      if (stage === "2-2") return !!p.stage2?.attempt2?.experimentId;
+      return false;
+    };
+    return participants.filter(hasStage).length;
   }
 
   async _buildStageRows(stage) {
@@ -96,6 +62,8 @@ class FinalAnalysisManager {
     if (!data.success) throw new Error(data.error || "未知錯誤");
     const records = (data.records || []).filter(r => r.stage === stage);
     const withAttempts = records.filter(r => r.attempts?.length);
+    // 受試者姓名一律用 trackingId 去名單（participants.json）查，不從分析紀錄裡讀，避免到處存重複的值
+    const nameMap = await getParticipantNameMap();
 
     // idx：這個檔案（該階段）所有列的總序列，從 1 連續編號到底，不因人／實驗切段重來。
     // 之後不管在 Excel 或分析時怎麼篩選、排序，都能靠 idx 還原原始順序，
@@ -103,9 +71,10 @@ class FinalAnalysisManager {
     const rows = [ROW_HEADERS];
     let idx = 0;
     for (const r of withAttempts) {
+      const name = nameMap.get(r.trackingId) || "";
       r.attempts.forEach(a => {
         idx += 1;
-        rows.push([idx, r.trackingId, r.experimentId, a.participantName || "", a.gestureCommand || "", a.type || "", a.typeRaw || "", a.note || "", a.duration || ""]);
+        rows.push([idx, r.trackingId, r.experimentId, name, a.gestureCommand || "", a.type || "", a.typeRaw || "", a.note || "", a.duration || ""]);
       });
     }
     return { rows, count: withAttempts.length };
@@ -124,7 +93,7 @@ class FinalAnalysisManager {
     try {
       const { rows, count } = await this._buildStageRows(stage);
       if (!count) {
-        alert(`目前還沒有階段「${STAGE_LABELS[stage]}」的資料，請先到「比對名單」分頁完成比對，並按下「全部儲存」。`);
+        showToast(`目前還沒有階段「${STAGE_LABELS[stage]}」的資料，請先到「比對名單」分頁完成比對，並按下「全部儲存」。`, "warning", 6000);
         this._loading = false;
         this._render();
         return;
@@ -135,7 +104,7 @@ class FinalAnalysisManager {
       this._previewRows = rows;
       this._previewMissing = missing;
     } catch (err) {
-      alert(`預覽失敗：${err.message || err}`);
+      showToast(`預覽失敗：${err.message || err}`, "error");
     }
     this._loading = false;
     this._render();
@@ -169,15 +138,7 @@ class FinalAnalysisManager {
       ? `<p class="final-analysis-missing-note">階段「${STAGE_LABELS[this._previewStage]}」名單上還有 ${this._previewMissing} 位受試者尚未完成比對／儲存，目前僅預覽已有的 ${this._previewRows.length - 1} 筆。</p>`
       : "";
 
-    const emptyCardsHtml = this._cards.length
-      ? ""
-      : "<div class=\"assist-mark-empty\"><p>目前沒有卡片，按下方「新增卡片」開始一張新的統計圖表。</p></div>";
-    const cardsHtml = `<div class="final-analysis-cards-toolbar">
-      <button class="archive-action-btn archive-action-btn--sm" data-final-add-card="duration">+ 新增卡片（指令平均時間 / 超過平均次數）</button>
-      <button class="archive-action-btn archive-action-btn--sm" data-final-add-card="agreement">+ 新增卡片（同意率 Agreement Rate）</button>
-    </div>
-    ${emptyCardsHtml}
-    <div class="final-analysis-cards">${this._cards.map((_, i) => `<div class="final-analysis-card-slot" id="finalAnalysisCardSlot${i}"></div>`).join("")}</div>`;
+    const cardsHtml = `<div class="final-analysis-cards">${this._cards.map((_, i) => `<div class="final-analysis-card-slot" id="finalAnalysisCardSlot${i}"></div>`).join("")}</div>`;
 
     this._container.innerHTML = `<div class="final-analysis-shell">
       <div class="final-analysis-topbar">
@@ -204,10 +165,6 @@ class FinalAnalysisManager {
     this._container.querySelectorAll("[data-final-download]").forEach(btn => {
       btn.addEventListener("click", () => this._downloadCurrent(btn.dataset.finalDownload));
     });
-    const addDurationBtn = this._container.querySelector("[data-final-add-card=\"duration\"]");
-    if (addDurationBtn) addDurationBtn.addEventListener("click", () => this._addDurationCard());
-    const addAgreementBtn = this._container.querySelector("[data-final-add-card=\"agreement\"]");
-    if (addAgreementBtn) addAgreementBtn.addEventListener("click", () => this._addAgreementCard());
 
     if (!isPreviewMode) {
       this._cards.forEach((card, i) => {

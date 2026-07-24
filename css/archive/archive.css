@@ -21,6 +21,9 @@ body.archive-page {
 /* ===== 檔案清單側邊欄 ===== */
 .archive-page .container {
   position: relative;
+  display: flex;
+  width: 100%;
+  max-width: 1400px;
 }
 
 .archive-sidebar .board-section {
@@ -189,10 +192,51 @@ body.archive-page {
   word-break: break-all;
 }
 
+.assist-mark-actions-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
 .assist-mark-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  justify-content: flex-end;
+}
+
+.assist-mark-actions.is-collapsed {
+  display: none;
+}
+
+.assist-mark-collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f6f72;
+  padding: 3px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.assist-mark-collapse-btn:hover {
+  background: rgba(15, 139, 141, 0.1);
+}
+
+.assist-mark-collapse-icon {
+  display: inline-block;
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+.assist-mark-collapse-btn[aria-expanded="false"] .assist-mark-collapse-icon {
+  transform: rotate(-90deg);
 }
 
 .assist-mark-status-bar {
@@ -206,6 +250,19 @@ body.archive-page {
   border-radius: 8px;
   color: #557273;
   font-size: 13px;
+}
+
+.assist-mark-status-content {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 200px;
+}
+
+.assist-mark-status-content.is-collapsed {
+  display: none;
 }
 
 .archive-action-btn--sm {
@@ -237,6 +294,16 @@ body.archive-page {
   color: #6a7f80;
 }
 
+.assist-mark-paste-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.assist-mark-paste-section .assist-mark-collapse-btn {
+  align-self: flex-start;
+}
+
 .assist-mark-pastebox {
   min-height: 90px;
   width: 100%;
@@ -255,6 +322,10 @@ body.archive-page {
 .assist-mark-pastebox:focus {
   border-color: #0f8b8d;
   box-shadow: 0 0 0 3px rgba(15, 139, 141, 0.12);
+}
+
+.assist-mark-pastebox.is-collapsed {
+  display: none;
 }
 
 .assist-mark-table-wrap {
@@ -344,6 +415,11 @@ body.archive-page {
 
 .assist-mark-table tbody tr.is-pending-row {
   background: #fef9e7;
+}
+
+/* 尚未錄製花費時間的列：淡橙色提示還沒做 */
+.assist-mark-table tbody tr.is-unrecorded-row {
+  background: #fdf1e3;
 }
 
 .assist-mark-row-index {
@@ -872,12 +948,6 @@ body.archive-page {
 }
 
 /* ── 最終分析：分析卡片 ── */
-.final-analysis-cards-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 10px;
-}
-
 .final-analysis-cards {
   flex: 1;
   min-height: 0;
@@ -951,6 +1021,44 @@ body.archive-page {
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px dashed #dde0f3;
+}
+
+.final-analysis-scope-group-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.final-analysis-scope-group-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.final-analysis-scope-group-toggle {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid #dde0f3;
+  border-radius: 4px;
+  padding: 0;
+  font-size: 11px;
+  color: #7d3c98;
+  cursor: pointer;
+  line-height: 1;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.final-analysis-scope-group-toggle:hover {
+  background: #f4ecf7;
+  border-color: #7d3c98;
+}
+
+.final-analysis-scope-group.is-collapsed .final-analysis-scope-items {
+  display: none;
 }
 
 .final-analysis-scope-group-title {
@@ -1135,6 +1243,182 @@ body.archive-page {
   margin: 0;
   color: #999;
   font-size: 12.5px;
+}
+
+/* ── 最終分析：統計摘要小方塊（Agreement Rate / Highest Agreement / Category Count 等）── */
+.final-analysis-stat-tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.final-analysis-stat-tile {
+  flex: 1 1 160px;
+  min-width: 140px;
+  padding: 10px 12px;
+  background: #faf7fb;
+  border: 1.5px solid #e6d3ee;
+  border-radius: 8px;
+}
+
+.final-analysis-stat-tile-label {
+  font-size: 11.5px;
+  color: #8e6a99;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.final-analysis-stat-tile-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: #333;
+}
+
+/* ── 最終分析：檢定適用性徽章／檢定結果面板 ── */
+.final-analysis-suitability {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.final-analysis-suitability.is-ok {
+  color: #1e8449;
+  background: #eafaf1;
+}
+
+.final-analysis-suitability.is-warn {
+  color: #9a6500;
+  background: #fef9e7;
+}
+
+.final-analysis-comparisons {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.final-analysis-test-panel {
+  border: 1.5px solid #eceefa;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #fafbff;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.final-analysis-test-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.final-analysis-test-row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.final-analysis-test-name {
+  font-weight: 700;
+  color: #333;
+  font-size: 13px;
+}
+
+.final-analysis-test-result {
+  font-size: 13px;
+  color: #444;
+  font-family: monospace;
+}
+
+/* ── 最終分析：圖表設定面板（標題／軸標籤／顯示標籤與數值／顏色／重設）── */
+.final-analysis-chart-settings-wrap {
+  border: 1.5px dashed #dde0f3;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #fafbff;
+}
+
+.final-analysis-chart-settings {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.final-analysis-chart-settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #7d3c98;
+}
+
+.final-analysis-chart-settings-field input[type="text"] {
+  font-weight: 400;
+  color: #333;
+  font-size: 12.5px;
+  padding: 5px 8px;
+  border: 1.5px solid #dde0f3;
+  border-radius: 6px;
+  min-width: 140px;
+}
+
+.final-analysis-chart-settings-field--color input {
+  width: 44px;
+  height: 30px;
+  padding: 2px;
+  border: 1.5px solid #dde0f3;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.final-analysis-chart-settings-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: #444;
+  padding-bottom: 6px;
+}
+
+/* ── 最終分析：通用資料表格（排序／搜尋／複製／匯出 CSV）── */
+.final-analysis-datatable {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  min-height: 0;
+}
+
+.final-analysis-datatable-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.final-analysis-datatable-search {
+  flex: 1;
+  min-width: 160px;
+  max-width: 280px;
+  padding: 6px 10px;
+  border: 1.5px solid #dde0f3;
+  border-radius: 6px;
+  font-size: 12.5px;
+}
+
+.final-analysis-table th[data-table-sort] {
+  cursor: pointer;
+  user-select: none;
+}
+
+.final-analysis-table th[data-table-sort]:hover {
+  color: #4a4a4a;
 }
 
 /* ── Layout ── */
@@ -4247,24 +4531,55 @@ body.archive-page {
   color: #6c7086;
 }
 
-/* ===== 手機版（≤768px）：側邊欄收折改為堆疊 ===== */
+/* ===== 手機版（≤768px）：改為上下堆疊，收折按鈕改收合／展開高度而非寬度 ===== */
 @media (max-width: 768px) {
+  .archive-page .container {
+    flex-direction: column;
+    overflow-x: hidden;
+  }
+
+  .archive-sidebar {
+    flex: 0 0 auto;
+    width: auto;
+    max-height: 45vh;
+  }
+
   .archive-panel-toggle {
-    display: none;
+    position: static;
+    width: 100%;
+    height: 32px;
+    border-radius: 6px;
+    transform: none;
+    margin-bottom: 8px;
+  }
+
+  .archive-panel-toggle-icon {
+    transform: rotate(90deg);
   }
 
   .archive-sidebar.collapsed {
-    flex: 0 0 auto !important;
-    width: auto !important;
-    min-width: 0 !important;
-    overflow-y: auto !important;
-    opacity: 1 !important;
-    padding: 30px !important;
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 0;
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    padding: 0;
     border-right: none;
-    border-bottom: 2px solid #e0e0e0;
+    border-bottom: none;
   }
 
   .archive-stat-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* 遮擋修正：5 個 Tab 在窄螢幕上放不下時，改為可橫向滑動而非被裁切看不到 */
+  .archive-panel-tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .archive-panel-tab {
+    flex-shrink: 0;
   }
 }

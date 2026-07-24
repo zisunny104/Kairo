@@ -45,6 +45,8 @@ export const API_ENDPOINTS = {
   ANALYSIS: {
     SAVE: "/analysis/save",
     LIST: "/analysis/list",
+    DELETE: (trackingId, stage) =>
+      `/analysis/${encodeURIComponent(trackingId)}/${encodeURIComponent(stage)}`,
   },
   ASSIST_MARK: {
     DRAFT: "/assist-mark/draft",
