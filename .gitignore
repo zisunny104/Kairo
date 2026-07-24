@@ -24,3 +24,4 @@ Thumbs.db
 
 # Local AI tool settings
 .claude/
+.playwright-mcp/
