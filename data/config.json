@@ -1,9 +1,9 @@
 {
-    "version": "2.7.cab1de5",
+    "version": "2.8.5d3ce33",
     "description": "虛擬操作面板實驗設定檔",
     "author": "謝祥紫、Github Copilot",
     "created_at": "2024-07-16T10:00:00Z",
-    "updated_at": "2026-06-07 下午02:52:34.000Z",
+    "updated_at": "2026-07-24 下午08:46:03.000Z",
     "git_commit_hash": "c906572",
     "media_base_path": "assets/",
     "settings": {

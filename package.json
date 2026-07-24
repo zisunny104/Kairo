@@ -1,7 +1,7 @@
 {
     "type": "module",
     "name": "kairo",
-    "version": "2.7.cab1de5",
+    "version": "2.8.5d3ce33",
     "description": "機台操作面板與實驗設定",
     "main": "index.html",
     "scripts": {
