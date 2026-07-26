@@ -33,6 +33,7 @@ export const archiveViewerMethods = {
 
   _openState(state) {
     this._cleanupRemark();
+    this._closeInsertPanel();
     this._file = state;
     this._entryFilter = "";
     this._renderAll();
@@ -48,6 +49,7 @@ export const archiveViewerMethods = {
     if (expanded) {
       this._expandedSteps.delete(key);
       body.hidden = true;
+      if (this._insertState?.key === key) this._closeInsertPanel();
     } else {
       this._expandedSteps.add(key);
       body.hidden = false;
@@ -90,6 +92,7 @@ export const archiveViewerMethods = {
         <button class="archive-view-btn${f.viewMode === "raw"      ? " is-active" : ""}" data-mode="raw">原始</button>
       </div>
       <button class="archive-action-btn archive-action-btn--remark${f.viewMode === "remark" ? " is-active" : ""}" data-mode="remark">重新標記</button>
+      ${f.viewMode !== "remark" ? this._auditToolbarBtnHtml() : ""}
       ${saveBtn}
       ${isLocal ? "<button class=\"archive-action-btn archive-action-btn--upload\" data-action=\"upload\">上傳至伺服器</button>" : ""}
     </div>`;
@@ -172,7 +175,7 @@ export const archiveViewerMethods = {
     if (f.viewMode === "table")    body = this._renderTable(filtered);
     if (f.viewMode === "raw")      body = this._renderRaw(filtered);
 
-    return summary + countBar + body;
+    return this._renderAuditPanel() + summary + countBar + body;
   },
 
   _applyEntryFilter(entries) {
@@ -444,9 +447,138 @@ export const archiveViewerMethods = {
         </div>
         <div class="archive-step-body" ${expanded ? "" : "hidden"}>
           ${subEntries}
+          ${group.startTs != null ? this._renderInsertPanel(key, group) : ""}
         </div>
       </div>
     </div>`;
+  },
+
+  /** 步驟卡片內嵌的「＋新增記錄」：不開新彈窗，直接在卡片內即時計時＋標記。
+   *  基準點固定為該步驟的開始時間，按「開始計時」後即時跑秒數，
+   *  在缺漏事件實際發生的當下按「標記」，用經過的毫秒數換算精確時間。 */
+  _renderInsertPanel(key, group) {
+    const st = this._insertState;
+    if (!st || st.key !== key) {
+      return `<div class="archive-insert-row">
+        <button class="archive-count-btn" data-insert-toggle="${escapeHtml(key)}"
+          data-g-idx="${group.gIdx}" data-g-id="${escapeHtml(group.gId || "")}"
+          data-s-id="${escapeHtml(group.sId || "")}" data-anchor-ts="${group.startTs}">＋ 新增記錄</button>
+      </div>`;
+    }
+
+    const fmtRel = ms => `T+${this._tsm.formatStopwatch(ms)}`;
+    let timerHtml = "";
+    if (st.status === "idle") {
+      timerHtml = `<button class="remark-action-btn" data-insert-start>開始計時</button>`;
+    } else if (st.status === "running") {
+      timerHtml = `
+        <span class="archive-insert-timer" id="insert-timer">${fmtRel(Date.now() - st.startRealTs)}</span>
+        <button class="remark-mark-btn" data-insert-mark>標記</button>`;
+    } else if (st.status === "marked") {
+      timerHtml = `
+        <span class="archive-insert-marked">已標記於 ${fmtRel(st.relMs)}</span>
+        <button class="archive-count-btn" data-insert-restart>重新計時</button>`;
+    }
+
+    const typeRow = `<div class="archive-insert-type-row">
+      <label><input type="radio" name="insert-type" value="gesture_attempt" ${st.type === "gesture_attempt" ? "checked" : ""} data-insert-type> 手勢嘗試</label>
+      <label><input type="radio" name="insert-type" value="action" ${st.type === "action" ? "checked" : ""} data-insert-type> 動作</label>
+    </div>`;
+
+    let detailRow;
+    if (st.type === "gesture_attempt") {
+      const MARKS = [{ g: "t", label: "成功" }, { g: "n", label: "未判斷" }, { g: "f", label: "失敗" }];
+      detailRow = `<div class="archive-insert-detail-row">${MARKS.map(m =>
+        `<button class="mark-choice-btn${st.gType === m.g ? " is-current" : ""}"
+           style="background:${ATTEMPT_COLOR[m.g]}" data-insert-gtype="${m.g}" title="${m.label}">${ATTEMPT_ICON[m.g]}</button>`).join("")}</div>`;
+    } else {
+      detailRow = `<div class="archive-insert-detail-row">
+        <input type="text" class="ts-ms-input" placeholder="動作代碼 a_id" value="${escapeHtml(st.aId || "")}" data-insert-aid>
+      </div>`;
+    }
+
+    const canInsert = st.status === "marked" && (st.type === "action" ? !!st.aId : !!st.gType);
+
+    return `<div class="archive-insert-panel">
+      ${typeRow}
+      ${detailRow}
+      <div class="archive-insert-timer-row">${timerHtml}</div>
+      <div class="archive-insert-actions">
+        <button class="archive-count-btn" data-insert-cancel>取消</button>
+        <button class="archive-count-btn archive-count-btn--fix" data-insert-confirm ${canInsert ? "" : "disabled"}>插入此記錄</button>
+      </div>
+    </div>`;
+  },
+
+  _toggleInsertPanel(info) {
+    if (this._insertState?.key === info.key) {
+      this._closeInsertPanel();
+    } else {
+      this._closeInsertPanel();
+      this._insertState = {
+        key: info.key, gIdx: info.gIdx, gId: info.gId, sId: info.sId, anchorTs: info.anchorTs,
+        status: "idle", startRealTs: null, relMs: null,
+        type: "gesture_attempt", gType: null, aId: "",
+        _timerInterval: null,
+      };
+    }
+    this._renderAll();
+  },
+
+  _closeInsertPanel() {
+    if (this._insertState?._timerInterval) clearInterval(this._insertState._timerInterval);
+    this._insertState = null;
+  },
+
+  _insertStart() {
+    const st = this._insertState;
+    if (!st) return;
+    st.status = "running";
+    st.startRealTs = Date.now();
+    this._renderAll();
+    st._timerInterval = setInterval(() => {
+      const el = document.getElementById("insert-timer");
+      if (el) el.textContent = `T+${this._tsm.formatStopwatch(Date.now() - st.startRealTs)}`;
+    }, 50);
+  },
+
+  _insertMark() {
+    const st = this._insertState;
+    if (!st || st.status !== "running") return;
+    clearInterval(st._timerInterval);
+    st.relMs = Date.now() - st.startRealTs;
+    st.status = "marked";
+    this._renderAll();
+  },
+
+  _insertRestart() {
+    const st = this._insertState;
+    if (!st) return;
+    if (st._timerInterval) clearInterval(st._timerInterval);
+    st.status = "idle";
+    st.startRealTs = null;
+    st.relMs = null;
+    this._renderAll();
+  },
+
+  _insertConfirm() {
+    const st = this._insertState;
+    if (!st || st.status !== "marked" || !this._file) return;
+    if (st.type === "gesture_attempt" && !st.gType) return;
+    if (st.type === "action" && !st.aId) return;
+
+    const ts = st.anchorTs + st.relMs;
+    const entry = st.type === "gesture_attempt"
+      ? { ts, type: "gesture_attempt", g_idx: st.gIdx, g_id: st.gId, s_id: st.sId, g_type: st.gType }
+      : { ts, type: "action", g_idx: st.gIdx, g_id: st.gId, s_id: st.sId, a_id: st.aId };
+
+    let idx = this._file.entries.findIndex(e => e.ts != null && e.ts > ts);
+    if (idx === -1) idx = this._file.entries.length;
+    this._file.insertEntryAt(idx, entry,
+      `新增記錄: ${st.type === "gesture_attempt" ? "手勢嘗試" : "動作"} @ T+${this._tsm.formatStopwatch(st.relMs)}（步驟內補標）`);
+
+    this._closeInsertPanel();
+    this._renderAll();
   },
 
   /** 子記錄：以表格呈現，欄位標頭清楚標示資料來源 */
@@ -505,8 +637,9 @@ export const archiveViewerMethods = {
 
     const typeAttr = entry._idx != null
       ? `data-type-edit="${entry._idx}" title="點按修改類型或刪除"` : "";
-    const markAttr = entry._idx != null && gType
-      ? `data-mark-edit="${entry._idx}" data-mark-val="${escapeHtml(String(gType))}" title="點按更改標記"` : "";
+    // 只要是手勢嘗試記錄就可點按標記，即使結果尚未標記（g_type 空值）也要能補標
+    const markAttr = entry._idx != null && type === "gesture_attempt"
+      ? `data-mark-edit="${entry._idx}" data-mark-val="${escapeHtml(String(gType || ""))}" title="點按${gType ? "更改" : "補上"}標記"` : "";
 
     return `<tr class="${sameTs ? "same-ts-row" : ""}">
       <td><span class="archive-sub-time${tsAttr ? " ts-editable" : ""}" ${tsAttr}>${relTs}</span></td>
@@ -515,6 +648,7 @@ export const archiveViewerMethods = {
       <td class="archive-sub-detail">${actionHtml}</td>
       <td class="archive-sub-result">${(() => {
         if (!markAttr) return resultHtml;
+        if (!gType) return `<span class="cell-empty attempt-editable badge-clickable" ${markAttr}>—</span>`;
         const mc = TYPE_COLORS[`gesture_attempt_${gType}`] || {};
         return `<span class="attempt-chip attempt-editable badge-clickable"
           style="color:${mc.text};background:${mc.bg};border:1.5px solid ${mc.border};padding:2px 9px;border-radius:8px"

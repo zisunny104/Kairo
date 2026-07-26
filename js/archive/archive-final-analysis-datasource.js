@@ -41,7 +41,7 @@ export function discoverParticipants(records) {
     const id = String(r.trackingId);
     if (!map.has(id)) map.set(id, r.participantName || "");
   }
-  return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0], "zh-Hant"));
+  return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0], "zh-Hant", { numeric: true }));
 }
 
 export function discoverCommands(records) {
@@ -50,9 +50,14 @@ export function discoverCommands(records) {
   return Array.from(set).sort((a, b) => a.localeCompare(b, "zh-Hant"));
 }
 
+// records 應該只放「目前已勾選的資料集（stage）」範圍內的資料，這樣受試者／指令清單才不會
+// 一直列出跟目前選取範圍無關的人或指令；selectedParticipants/selectedCommands 是否已涵蓋
+// 目前清單的「全選」按鈕文字也是依這份清單判斷。
 export function renderFilterPanel(records, selectedParticipants, selectedCommands) {
   const participants = discoverParticipants(records);
   const commands = discoverCommands(records);
+  const allParticipantsSelected = participants.length > 0 && participants.every(([id]) => selectedParticipants.has(id));
+  const allCommandsSelected = commands.length > 0 && commands.every(cmd => selectedCommands.has(cmd));
   const participantItems = participants.map(([id, name]) => {
     const checked = selectedParticipants.has(id) ? "checked" : "";
     return `<label class="final-analysis-scope-item">
@@ -68,22 +73,30 @@ export function renderFilterPanel(records, selectedParticipants, selectedCommand
     </label>`;
   }).join("");
   return `<div class="final-analysis-scope-group">
-    <div class="final-analysis-scope-group-title final-analysis-scope-group-title--static"><span>篩選：受試者（選填，不勾＝全部）</span></div>
+    <div class="final-analysis-scope-group-title final-analysis-scope-group-title--static">
+      <span>受試者</span>
+      <button type="button" class="archive-action-btn archive-action-btn--sm" data-filter-select-all="participant" ${participants.length ? "" : "disabled"}>${allParticipantsSelected ? "清除全選" : "全選"}</button>
+    </div>
     <div class="final-analysis-scope-items final-analysis-scope-items--scroll">${participantItems || "<p class=\"final-analysis-donut-empty\">尚無受試者</p>"}</div>
   </div>
   <div class="final-analysis-scope-group">
-    <div class="final-analysis-scope-group-title final-analysis-scope-group-title--static"><span>篩選：指令（選填，不勾＝全部）</span></div>
+    <div class="final-analysis-scope-group-title final-analysis-scope-group-title--static">
+      <span>手勢指令</span>
+      <button type="button" class="archive-action-btn archive-action-btn--sm" data-filter-select-all="command" ${commands.length ? "" : "disabled"}>${allCommandsSelected ? "清除全選" : "全選"}</button>
+    </div>
     <div class="final-analysis-scope-items final-analysis-scope-items--scroll">${commandItems || "<p class=\"final-analysis-donut-empty\">尚無指令資料</p>"}</div>
   </div>`;
 }
 
-export function wireFilterPanel(container, onToggleParticipant, onToggleCommand) {
+export function wireFilterPanel(container, onToggleParticipant, onToggleCommand, onToggleAllParticipants, onToggleAllCommands) {
   container.querySelectorAll("[data-filter-participant]").forEach(el => {
     el.addEventListener("change", () => onToggleParticipant(el.dataset.filterParticipant, el.checked));
   });
   container.querySelectorAll("[data-filter-command]").forEach(el => {
     el.addEventListener("change", () => onToggleCommand(el.dataset.filterCommand, el.checked));
   });
+  container.querySelector('[data-filter-select-all="participant"]')?.addEventListener("click", () => onToggleAllParticipants?.());
+  container.querySelector('[data-filter-select-all="command"]')?.addEventListener("click", () => onToggleAllCommands?.());
 }
 
 // ── 套用資料來源＋篩選，回傳依資料集（stage）分組的結果 ──────────────────

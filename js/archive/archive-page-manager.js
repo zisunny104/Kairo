@@ -11,6 +11,7 @@ import { archiveSidebarMethods } from "./archive-sidebar.js";
 import { archiveViewerMethods } from "./archive-viewer.js";
 import { archiveEditorMethods } from "./archive-editor.js";
 import { archiveRemarkMethods } from "./archive-remark.js";
+import { archiveAuditMethods } from "./archive-audit.js";
 
 class ArchivePageManager {
   constructor() {
@@ -23,6 +24,9 @@ class ArchivePageManager {
     this._tsPopupKeyHandler   = null;
     this._typePopupKeyHandler = null;
     this._remarkState = this._defaultRemarkState();
+    this._auditOpen     = false;
+    this._auditFindings = [];
+    this._insertState   = null; // 步驟卡片內嵌「＋新增記錄」的即時計時狀態
     // 參考資料（ID → 可讀名稱）
     this._gestureMap  = {};
     this._stepMap     = {};
@@ -79,6 +83,7 @@ Object.assign(ArchivePageManager.prototype,
   archiveViewerMethods,
   archiveEditorMethods,
   archiveRemarkMethods,
+  archiveAuditMethods,
 );
 
 // ── 啟動 ──────────────────────────────────────────────────────────────────────

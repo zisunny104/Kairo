@@ -6,11 +6,12 @@ import { onQuickRemarkActivate } from "./archive-quick-remark.js";
 import { onAssistMarkActivate } from "./archive-assist-mark.js";
 import { onMatchMarkActivate } from "./archive-match-mark.js";
 import { onFinalAnalysisActivate } from "./archive-final-analysis.js";
+import { onQuestionnaireActivate } from "./archive-questionnaire.js";
 
 (function () {
   var sidebarAutoCollapsed = false;
   var LAST_TAB_KEY = "archive_active_tab";
-  var VALID_TABS = ["viewer", "quick-remark", "assist-mark", "match-mark", "final-analysis"];
+  var VALID_TABS = ["viewer", "quick-remark", "assist-mark", "match-mark", "final-analysis", "questionnaire"];
 
   function getSidebar() { return document.getElementById("archiveLeftPanel"); }
   function getIcon()    { return document.getElementById("panelToggleIcon"); }
@@ -33,7 +34,8 @@ import { onFinalAnalysisActivate } from "./archive-final-analysis.js";
     sidebarAutoCollapsed = false;
   }
 
-  function activateTab(target) {
+  function activateTab(target, opts) {
+    opts = opts || {};
     var prevEl = document.querySelector(".archive-panel-tab.is-active");
     var prev   = prevEl ? prevEl.dataset.tab : null;
 
@@ -46,11 +48,13 @@ import { onFinalAnalysisActivate } from "./archive-final-analysis.js";
     var assistEl = document.getElementById("archiveAssistMark");
     var matchEl  = document.getElementById("archiveMatchMark");
     var finalEl  = document.getElementById("archiveFinalAnalysis");
+    var qnrEl    = document.getElementById("archiveQuestionnaire");
     if (viewerEl) viewerEl.classList.toggle("is-hidden", target !== "viewer");
     if (remarkEl) remarkEl.classList.toggle("is-hidden", target !== "quick-remark");
     if (assistEl) assistEl.classList.toggle("is-hidden", target !== "assist-mark");
     if (matchEl)  matchEl.classList.toggle("is-hidden", target !== "match-mark");
     if (finalEl)  finalEl.classList.toggle("is-hidden", target !== "final-analysis");
+    if (qnrEl)    qnrEl.classList.toggle("is-hidden", target !== "questionnaire");
 
     if (target === "quick-remark") {
       collapseSidebar();
@@ -64,11 +68,20 @@ import { onFinalAnalysisActivate } from "./archive-final-analysis.js";
     } else if (target === "final-analysis") {
       collapseSidebar();
       onFinalAnalysisActivate();
-    } else if (prev === "quick-remark" || prev === "assist-mark" || prev === "match-mark" || prev === "final-analysis") {
+    } else if (target === "questionnaire") {
+      collapseSidebar();
+      onQuestionnaireActivate();
+    } else if (prev === "quick-remark" || prev === "assist-mark" || prev === "match-mark" || prev === "final-analysis" || prev === "questionnaire") {
       restoreSidebar();
     }
 
     try { localStorage.setItem(LAST_TAB_KEY, target); } catch { /* 不可用時忽略，僅影響記憶功能 */ }
+
+    // 使用者主動點分頁才寫入瀏覽器歷史紀錄；popstate 觸發的還原（opts.silent）不能再往上疊，
+    // 否則會產生無限增生的歷史紀錄，「上一頁」永遠回不到分頁清單之外的前一個頁面。
+    if (!opts.silent && prev !== target) {
+      try { history.pushState({ archiveTab: target }, "", location.href); } catch { /* 不可用時忽略，僅影響上一頁記憶功能 */ }
+    }
   }
 
   document.querySelectorAll(".archive-panel-tab").forEach(function (tab) {
@@ -79,6 +92,17 @@ import { onFinalAnalysisActivate } from "./archive-final-analysis.js";
   var lastTab = null;
   try { lastTab = localStorage.getItem(LAST_TAB_KEY); } catch { /* 不可用時忽略 */ }
   if (lastTab && lastTab !== "viewer" && VALID_TABS.indexOf(lastTab) !== -1) {
-    activateTab(lastTab);
+    activateTab(lastTab, { silent: true });
+  } else {
+    lastTab = "viewer";
   }
+  // 把目前這筆歷史紀錄標記上目前分頁，讓「上一頁」先在分頁之間走，走完才離開這個頁面
+  try { history.replaceState({ archiveTab: lastTab }, "", location.href); } catch { /* 不可用時忽略 */ }
+
+  window.addEventListener("popstate", function (e) {
+    var tab = e.state && e.state.archiveTab;
+    if (tab && VALID_TABS.indexOf(tab) !== -1) {
+      activateTab(tab, { silent: true });
+    }
+  });
 })();

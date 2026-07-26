@@ -178,13 +178,16 @@ export function computeAgreement(attempts, keyField) {
     const val = raw == null ? "" : String(raw).trim();
     if (!val) continue;
     if (!byReferent.has(command)) byReferent.set(command, []);
-    byReferent.get(command).push(val);
+    byReferent.get(command).push(a);
   }
   const rows = [];
-  for (const [command, vals] of byReferent) {
-    const n = vals.length;
+  for (const [command, entries] of byReferent) {
+    const n = entries.length;
     const counts = new Map();
-    vals.forEach(v => counts.set(v, (counts.get(v) || 0) + 1));
+    entries.forEach(a => {
+      const val = String(a[keyField]).trim();
+      counts.set(val, (counts.get(val) || 0) + 1);
+    });
     let ar = 0;
     const groups = [];
     for (const [value, count] of counts) {
@@ -192,20 +195,22 @@ export function computeAgreement(attempts, keyField) {
       groups.push({ value, count, pct: count / n });
     }
     groups.sort((a, b) => b.count - a.count);
-    rows.push({ command, ar, n, groups });
+    // 追查來源用：這個指令分組裡實際涉及哪些受試者（trackingId），主要給「（未知指令）」這種
+    // 需要回頭檢查原始資料的分組使用，其餘正常分組通常涉及的受試者太多，UI 不一定會顯示。
+    const sources = Array.from(new Map(entries.map(a => [String(a.trackingId), a.participantName || ""])).entries())
+      .map(([trackingId, participantName]) => ({ trackingId, participantName }))
+      .sort((x, y) => x.trackingId.localeCompare(y.trackingId, "zh-Hant", { numeric: true }));
+    rows.push({ command, ar, n, groups, sources });
   }
   rows.sort((a, b) => a.command.localeCompare(b.command, "zh-Hant"));
   return rows;
 }
 
-// ── 錯誤率（g_type: t=成功／f=失敗，n=未判斷排除不計）────────────────────
+// ── 錯誤率（g_type: t=成功；其餘（f=失敗、n=未判斷…）一律算不正確）────────
 export function errorRateCounts(attempts) {
-  let correct = 0, wrong = 0;
-  for (const a of attempts) {
-    if (a.typeRaw === "t") correct += 1;
-    else if (a.typeRaw === "f") wrong += 1;
-  }
-  const total = correct + wrong;
+  const total = attempts.length;
+  const correct = attempts.reduce((n, a) => n + (a.typeRaw === "t" ? 1 : 0), 0);
+  const wrong = total - correct;
   return { correct, wrong, total, errorRate: total ? wrong / total : null };
 }
 

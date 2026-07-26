@@ -147,6 +147,24 @@ export function escapeHtmlText(str) {
   return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+// ── 頂部標題列「操作按鈕」收合按鈕（各分頁共用同一顆小按鈕樣式，位置固定在標題列右上角）──
+export const COLLAPSE_CHEVRON_SVG = `<svg class="assist-mark-collapse-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
+
+export function renderActionsCollapseBtn(toggleAttr, collapsed) {
+  return `<button type="button" class="assist-mark-collapse-btn" ${toggleAttr} aria-expanded="${collapsed ? "false" : "true"}" title="收合/展開操作按鈕">${COLLAPSE_CHEVRON_SVG}操作按鈕</button>`;
+}
+
+export function loadCollapsedPref(key, defaultValue = false) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw === null ? defaultValue : raw === "1";
+  } catch { return defaultValue; }
+}
+
+export function saveCollapsedPref(key, collapsed) {
+  try { localStorage.setItem(key, collapsed ? "1" : "0"); } catch { /* 不可用時忽略，僅影響收合記憶功能 */ }
+}
+
 // ── 輕量提示（取代會中斷操作的 alert()）─────────────────────────────────────
 const TOAST_COLORS = { error: "#f44336", success: "#4caf50", warning: "#ff9800", info: "#667eea" };
 
@@ -167,6 +185,16 @@ export function showToast(message, type = "error", duration = 4000) {
     toast.style.opacity = "0";
     setTimeout(() => toast.remove(), 300);
   }, duration);
+}
+
+// 統一解析 fetch 回應的 JSON body：伺服器重啟／連線中斷時回應可能是空的或非 JSON，
+// 直接 res.json() 會丟出「Unexpected end of JSON input」這種難懂的原生錯誤，這裡轉成看得懂的訊息。
+export async function parseJsonResponse(res) {
+  try {
+    return await res.json();
+  } catch {
+    throw new Error(`伺服器無回應內容（HTTP ${res.status}），請確認連線後重試`);
+  }
 }
 
 export function colorizeJson(jsonStr) {
@@ -265,6 +293,17 @@ export class ArchiveFileState {
           e = [...e.slice(0, index), { ...e[index], [field]: before }, ...e.slice(index + 1)];
       }
       this.entries = e;
+    } else if (op.op === "insert") {
+      this.entries = [
+        ...this.entries.slice(0, op.index),
+        ...this.entries.slice(op.index + 1),
+      ];
+    } else if (op.op === "remove-batch") {
+      let e = [...this.entries];
+      for (const { index, entry } of [...op.removed].sort((a, b) => a.index - b.index)) {
+        e = [...e.slice(0, index), entry, ...e.slice(index)];
+      }
+      this.entries = e;
     } else {
       if (op.index >= 0 && op.index < this.entries.length)
         this.entries = [
@@ -283,6 +322,37 @@ export class ArchiveFileState {
       ...this.entries.slice(index + 1),
     ];
     this.history.push({ ts: Date.now(), op: "remove", index, removed, label: `刪除: ${removed.type}` });
+    this._trimHistory();
+    this.isDirty = true;
+    this._autoSave();
+  }
+
+  /** 在指定位置插入一筆新記錄（用於「＋新增記錄」補一筆遺漏的手勢嘗試/動作）。 */
+  insertEntryAt(index, entry, label = "") {
+    const at = Math.max(0, Math.min(index, this.entries.length));
+    this.entries = [
+      ...this.entries.slice(0, at),
+      { ...entry },
+      ...this.entries.slice(at),
+    ];
+    this.history.push({ ts: Date.now(), op: "insert", index: at, label });
+    this._trimHistory();
+    this.isDirty = true;
+    this._autoSave();
+  }
+
+  /** 批次刪除多筆記錄，視為單一可復原操作（用於合併重複的步驟開始/結束標記）。 */
+  removeEntries(indices, label = "") {
+    const sorted = [...new Set(indices)].filter(i => i >= 0 && i < this.entries.length).sort((a, b) => b - a);
+    if (sorted.length === 0) return;
+    const removed = [];
+    let entries = [...this.entries];
+    for (const index of sorted) {
+      removed.push({ index, entry: entries[index] });
+      entries = [...entries.slice(0, index), ...entries.slice(index + 1)];
+    }
+    this.entries = entries;
+    this.history.push({ ts: Date.now(), op: "remove-batch", removed, label });
     this._trimHistory();
     this.isDirty = true;
     this._autoSave();

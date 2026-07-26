@@ -98,7 +98,7 @@ router.get("/list", requireAdminToken, async (req, res) => {
  */
 router.post("/save", requireAdminToken, async (req, res) => {
   try {
-    const { trackingId, stage, experimentId, date, matchedFilename, attempts, overrides } = req.body || {};
+    const { trackingId, stage, experimentId, date, matchedFilename, attempts, hasAssistData, overrides } = req.body || {};
 
     const trackingIdNum = Number(trackingId);
     if (!Number.isInteger(trackingIdNum) || trackingIdNum < 0) {
@@ -135,6 +135,7 @@ router.post("/save", requireAdminToken, async (req, res) => {
         return out;
       });
     }
+    const countDurations = list => (list || []).filter(a => a.duration).length;
 
     await ensureDir();
     const filename = `${trackingIdNum}_${stage}.json`;
@@ -150,16 +151,31 @@ router.post("/save", requireAdminToken, async (req, res) => {
       return res.status(409).json({ success: false, conflict: true, conflicts });
     }
 
+    // 送進來的 attempts 若比伺服器現有的「已記錄花費時間」筆數還少（例如輔助標記端本機/雲端
+    // 草稿曾經遺失資料，重新標記或重新整合後又送出一次不完整的版本），視為倒退的資料，
+    // 保留伺服器現有的 attempts、不覆寫，避免已經標記成功、得來不易的計時結果被空值蓋掉。
+    // 只在「兩邊筆數都有值可比」時才擋，全新受試者（existing 為 null）或本來就沒存過的仍正常寫入。
+    const existingDurationCount = countDurations(existing?.attempts);
+    const incomingDurationCount = countDurations(safeAttempts);
+    const attemptsRegressed = !!(existing?.attempts?.length && safeAttempts && incomingDurationCount < existingDurationCount);
+    const useIncoming = !attemptsRegressed && safeAttempts && safeAttempts.length;
+    const finalAttempts = useIncoming ? safeAttempts : (existing?.attempts || []);
+    // hasAssistData 標記這批 attempts 是不是真的來自「輔助標記」人工資料，還是名單比對端拿日誌檔
+    // 翻譯出來的備援資料——兩者都會存進 attempts，但只有前者該在畫面上顯示「輔助標記」標籤、
+    // 或被「從輔助標記匯入」拿來當「既有資料筆數」比較，不然日誌翻譯出來的資料會被誤標成輔助標記。
+    const finalHasAssistData = useIncoming ? !!hasAssistData : !!existing?.hasAssistData;
+
     const record = {
       trackingId: trackingIdNum,
       stage,
       ...merged,
-      attempts: safeAttempts && safeAttempts.length ? safeAttempts : (existing?.attempts || []),
+      attempts: finalAttempts,
+      hasAssistData: finalHasAssistData,
       savedAt: new Date().toISOString(),
     };
     await fs.writeFile(filepath, JSON.stringify(record, null, 2), "utf8");
 
-    res.json({ success: true, filename, record });
+    res.json({ success: true, filename, record, attemptsRegressed });
   } catch (error) {
     Logger.error("[Analysis] Save error:", error.message);
     res.status(500).json({ success: false, error: "伺服器內部錯誤" });

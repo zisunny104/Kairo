@@ -77,6 +77,44 @@ export const archiveEditorMethods = {
       if (el) { e.stopPropagation(); this._handleMarkEdit(el); return; }
       if (!e.target.closest("#mark-popup")) this._closeMarkPopup();
     });
+
+    // 步驟卡片內嵌「＋新增記錄」（即時計時＋標記，不開新彈窗）
+    viewer.addEventListener("click", e => {
+      const toggleBtn = e.target.closest("[data-insert-toggle]");
+      if (toggleBtn) {
+        e.stopPropagation();
+        this._toggleInsertPanel({
+          key: toggleBtn.dataset.insertToggle,
+          gIdx: parseInt(toggleBtn.dataset.gIdx, 10),
+          gId: toggleBtn.dataset.gId || null,
+          sId: toggleBtn.dataset.sId || null,
+          anchorTs: parseInt(toggleBtn.dataset.anchorTs, 10),
+        });
+        return;
+      }
+      if (e.target.closest("[data-insert-start]"))   { e.stopPropagation(); this._insertStart();   return; }
+      if (e.target.closest("[data-insert-mark]"))    { e.stopPropagation(); this._insertMark();    return; }
+      if (e.target.closest("[data-insert-restart]")) { e.stopPropagation(); this._insertRestart(); return; }
+      if (e.target.closest("[data-insert-cancel]"))  { e.stopPropagation(); this._closeInsertPanel(); this._renderAll(); return; }
+      if (e.target.closest("[data-insert-confirm]")) { e.stopPropagation(); this._insertConfirm();  return; }
+      const gtypeBtn = e.target.closest("[data-insert-gtype]");
+      if (gtypeBtn && this._insertState) {
+        e.stopPropagation();
+        this._insertState.gType = gtypeBtn.dataset.insertGtype;
+        this._renderAll();
+      }
+    });
+    viewer.addEventListener("change", e => {
+      const radio = e.target.closest("[data-insert-type]");
+      if (radio && this._insertState) {
+        this._insertState.type = radio.value;
+        this._renderAll();
+      }
+    });
+    viewer.addEventListener("input", e => {
+      const aidInput = e.target.closest("[data-insert-aid]");
+      if (aidInput && this._insertState) this._insertState.aId = aidInput.value;
+    });
   },
 
   // ── 摘要互動 ──────────────────────────────────────────────────────────────

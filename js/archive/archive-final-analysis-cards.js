@@ -7,7 +7,7 @@
 import { getApiUrl } from "../core/url-utils.js";
 import { getAdminToken, clearAdminToken } from "../core/admin-auth.js";
 import { API_ENDPOINTS } from "../constants/index.js";
-import { escapeHtml } from "./archive-constants.js";
+import { escapeHtml, parseJsonResponse } from "./archive-constants.js";
 import { getParticipantNameMap } from "./archive-roster.js";
 import { parseClockMs } from "./archive-assist-mark.js";
 import {
@@ -18,6 +18,7 @@ import {
 import { ChartSettings, DataTableView, renderBarChart, renderPieChart, renderBoxPlot, wireChartExports } from "./archive-final-analysis-viz.js";
 import {
   renderDatasetPicker, wireDatasetPicker, renderFilterPanel, wireFilterPanel, filterAttempts,
+  discoverParticipants, discoverCommands,
 } from "./archive-final-analysis-datasource.js";
 
 // ── 卡片外殼共用的小元件 ────────────────────────────────────────────────
@@ -106,7 +107,7 @@ class BaseAnalysisCard {
     this._render();
     try {
       const res = await this._authedFetch(`${getApiUrl()}${API_ENDPOINTS.ANALYSIS.LIST}`);
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (!data.success) throw new Error(data.error || "未知錯誤");
       const nameMap = await getParticipantNameMap();
       this._records = (data.records || []).filter(r => r.attempts?.length)
@@ -130,6 +131,24 @@ class BaseAnalysisCard {
   _toggleCommand(cmd, checked) { checked ? this._selectedCommands.add(cmd) : this._selectedCommands.delete(cmd); this._render(); }
   _setView(view) { this._view = view; this._render(); }
 
+  // 「全選」按鈕：只針對目前資料來源（已勾選的 stage）內實際出現的受試者／指令清單做全選或清除全選，
+  // 不會選到跟目前資料來源無關的舊選取項目——這樣切換全選狀態時結果才可預期。
+  _toggleAllParticipants(stageRecords) {
+    const ids = discoverParticipants(stageRecords).map(([id]) => id);
+    const allSelected = ids.length > 0 && ids.every(id => this._selectedParticipants.has(id));
+    this._selectedParticipants.clear();
+    if (!allSelected) for (const id of ids) this._selectedParticipants.add(id);
+    this._render();
+  }
+
+  _toggleAllCommands(stageRecords) {
+    const cmds = discoverCommands(stageRecords);
+    const allSelected = cmds.length > 0 && cmds.every(cmd => this._selectedCommands.has(cmd));
+    this._selectedCommands.clear();
+    if (!allSelected) for (const cmd of cmds) this._selectedCommands.add(cmd);
+    this._render();
+  }
+
   _groups() {
     if (!this._records) return [];
     return filterAttempts(this._records, {
@@ -150,11 +169,14 @@ class BaseAnalysisCard {
 
   _render() {
     if (!this._container) return;
+    // 受試者／指令篩選清單只看目前資料來源（已勾選的 stage）裡實際出現的資料，
+    // 不然切換 stage 之後，清單還是列出跟目前資料來源無關的人或指令。
+    const stageRecords = (this._records || []).filter(r => this._selectedStages.has(r.stage));
     const scopeHtml = this._loading
       ? "<div class=\"assist-mark-empty\"><h3>載入中…</h3></div>"
       : this._error
         ? `<div class="assist-mark-empty"><h3>載入失敗</h3><p>${escapeHtml(this._error)}</p></div>`
-        : renderDatasetPicker(this._records, this._selectedStages) + renderFilterPanel(this._records, this._selectedParticipants, this._selectedCommands);
+        : renderDatasetPicker(this._records, this._selectedStages) + renderFilterPanel(stageRecords, this._selectedParticipants, this._selectedCommands);
 
     const groups = (!this._loading && !this._error) ? this._groups() : [];
     const analysisHtml = (!this._loading && !this._error)
@@ -182,10 +204,10 @@ class BaseAnalysisCard {
       ${bodyHtml}
     </div>`;
 
-    this._wireCommon(groups);
+    this._wireCommon(groups, stageRecords);
   }
 
-  _wireCommon(groups) {
+  _wireCommon(groups, stageRecords) {
     const c = this._container;
     const titleInput = c.querySelector("[data-card-title]");
     if (titleInput) titleInput.addEventListener("change", () => this._setTitle(titleInput.value));
@@ -195,7 +217,12 @@ class BaseAnalysisCard {
     if (refreshBtn) refreshBtn.addEventListener("click", () => this._refresh());
     if (this._collapsed || this._loading || this._error) return;
     wireDatasetPicker(c, (stage, checked) => this._toggleStage(stage, checked));
-    wireFilterPanel(c, (id, checked) => this._toggleParticipant(id, checked), (cmd, checked) => this._toggleCommand(cmd, checked));
+    wireFilterPanel(c,
+      (id, checked) => this._toggleParticipant(id, checked),
+      (cmd, checked) => this._toggleCommand(cmd, checked),
+      () => this._toggleAllParticipants(stageRecords),
+      () => this._toggleAllCommands(stageRecords),
+    );
     this._wireAnalysisBody(c, groups);
     wireChartExports(c);
   }
@@ -287,6 +314,14 @@ export class GestureAgreementCard extends BaseAnalysisCard {
 
     const settingsHtml = view !== "table" ? `<div class="final-analysis-chart-settings-wrap">${this._chartSettings.renderPanel()}</div>` : "";
 
+    // 「（未知指令）」代表這幾筆原始資料沒有手勢指令欄位，容易讓人誤以為統計算錯，
+    // 這裡直接列出來源受試者（trackingId），方便回頭找是哪筆資料漏了指令。
+    const unknownRow = rows.find(r => r.command === "（未知指令）");
+    const unknownHint = unknownRow ? `<div class="match-mark-hidden-hint">
+      「（未知指令）」共 ${unknownRow.n} 筆缺少手勢指令欄位，來源受試者：${
+        unknownRow.sources.map(s => escapeHtml(s.trackingId + (s.participantName ? ` ${s.participantName}` : ""))).join("、")
+      }</div>` : "";
+
     return `<div class="final-analysis-card-controls">
       <label class="final-analysis-key-label">分析 Key（原始資料欄位，自動偵測）
         <select class="final-analysis-key-select" data-agreement-key>${keyOptions}</select>
@@ -294,6 +329,7 @@ export class GestureAgreementCard extends BaseAnalysisCard {
       ${viewButtons}
     </div>
     ${tiles}
+    ${unknownHint}
     ${settingsHtml}
     <div class="final-analysis-card-content">${content}</div>`;
   }

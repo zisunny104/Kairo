@@ -5,7 +5,7 @@
 import { Logger } from "../core/console-manager.js";
 import { UIPopover } from "../ui/popover.js";
 import { API_ENDPOINTS } from "../constants/index.js";
-import { ArchiveFileState, parseJsonl, escapeHtml, stripColorTags, showToast } from "./archive-constants.js";
+import { ArchiveFileState, parseJsonl, escapeHtml, stripColorTags, showToast, parseJsonResponse } from "./archive-constants.js";
 
 export const archiveSidebarMethods = {
 
@@ -59,7 +59,7 @@ export const archiveSidebarMethods = {
     try {
       const res  = await this._authedFetch(`${this._api}${API_ENDPOINTS.RECORD.LIST}`);
       if (!res.ok) { list.innerHTML = `<div class="archive-status archive-status--error">無法取得檔案列表 (${res.status})</div>`; return; }
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (!data.success) throw new Error(data.error || "未知錯誤");
       this._serverFiles = data.files || [];
       this._renderServerList();
@@ -286,7 +286,7 @@ export const archiveSidebarMethods = {
     try {
       const res  = await this._authedFetch(`${this._api}${API_ENDPOINTS.RECORD.READ(filename)}`);
       if (!res.ok) { this._showError(filename, `無法讀取 (${res.status})`); return; }
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (!data.success) throw new Error(data.error || "讀取失敗");
       const entries = parseJsonl(data.content);
       const state   = new ArchiveFileState({ id, title: filename, source: "server", entries });
@@ -476,7 +476,7 @@ export const archiveSidebarMethods = {
     try {
       const res  = await this._authedFetch(`${this._api}${API_ENDPOINTS.RECORD.READ(filename)}`);
       if (!res.ok) { Logger.error("[Archive] 下載失敗: HTTP", res.status); return; }
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (!data.success) { Logger.error("[Archive] 下載失敗:", data.error); return; }
       const blob = new Blob([data.content], { type: "application/x-jsonlines" });
       const a = Object.assign(document.createElement("a"), {
@@ -495,7 +495,7 @@ export const archiveSidebarMethods = {
     try {
       const res  = await this._authedFetch(`${this._api}${API_ENDPOINTS.RECORD.DELETE(filename)}`, { method: "DELETE" });
       if (!res.ok) { showToast(`刪除失敗 (${res.status})`, "error"); return; }
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (!data.success) throw new Error(data.error || "刪除失敗");
       if (this._file?.title === filename) this._file = null;
       await this._loadServerFiles();
@@ -509,7 +509,7 @@ export const archiveSidebarMethods = {
     try {
       const res  = await this._authedFetch(`${this._api}${API_ENDPOINTS.RECORD.DELETE(filename)}`, { method: "DELETE" });
       if (!res.ok) return;
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (!data.success) throw new Error(data.error);
       if (this._file?.title === filename) this._file = null;
     } catch (err) {
@@ -529,7 +529,7 @@ export const archiveSidebarMethods = {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ filename: state.title, content: state.toEditedJsonl() }),
       });
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (!data.success) throw new Error(data.error || "上傳失敗");
       await this._loadServerFiles();
     } catch (err) {
@@ -579,7 +579,7 @@ export const archiveSidebarMethods = {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ filename: newName, content: state.toEditedJsonl() }),
       });
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (!data.success) throw new Error(data.error || "儲存失敗");
       Logger.info(`[Archive] 另存成功: ${data.path}`);
       state.commitAsOriginal();
@@ -604,7 +604,7 @@ export const archiveSidebarMethods = {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ filename: state.title, content: state.toEditedJsonl() }),
       });
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (!data.success) throw new Error(data.error || "上傳失敗");
       Logger.info(`[Archive] 上傳成功: ${data.path}`);
       await this._loadServerFiles();

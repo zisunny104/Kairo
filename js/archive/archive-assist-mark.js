@@ -4,7 +4,7 @@
  */
 
 import * as XLSX from "../vendor/xlsx.mjs";
-import { escapeHtml, showToast } from "./archive-constants.js";
+import { escapeHtml, showToast, parseJsonResponse, COLLAPSE_CHEVRON_SVG } from "./archive-constants.js";
 import { downloadXlsx, downloadCsv } from "../core/xlsx-export.js";
 import { getApiUrl } from "../core/url-utils.js";
 import { getAdminToken, clearAdminToken } from "../core/admin-auth.js";
@@ -53,8 +53,6 @@ export function parseDelimitedText(text) {
     .filter(row => row.some(cell => cell !== EMPTY_TEXT));
 }
 
-const COLLAPSE_CHEVRON_SVG = `<svg class="assist-mark-collapse-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
-
 function sanitizeCellText(value) {
   return value == null ? "" : String(value);
 }
@@ -75,6 +73,15 @@ function detectHeaders(rows) {
     endIndex,
     durationIndex,
   };
+}
+
+// 從最後一欄往前找符合 pattern 的欄位（跟 archive-match-mark.js 的 guessAssistCol 邏輯一致），
+// 用來在「回填花費時間」時辨識目前表格裡的實驗ID／受試者ID／手勢指令欄。
+function findColumnIndex(headers, pattern) {
+  for (let i = headers.length - 1; i >= 0; i--) {
+    if (pattern.test(String(headers[i] || ""))) return i;
+  }
+  return -1;
 }
 
 function createDefaultState() {
@@ -109,10 +116,10 @@ class AssistMarkManager {
     this._syncTimer = null;
   }
 
-  // 三個可收合區塊（貼上區／草稿暫存與說明／操作按鈕）的展開狀態，跟草稿資料分開存，
-  // 純粹是本機顯示偏好，不需要跟伺服器同步。
+  // 操作按鈕、草稿暫存與說明、貼上區三塊合併成同一個收合開關（都收在「操作按鈕」底下，
+  // 分開收合各佔一行版面卻沒什麼用），展開狀態跟草稿資料分開存，純粹是本機顯示偏好，不需要跟伺服器同步。
   _loadUiState() {
-    const defaults = { paste: false, status: false, actions: false };
+    const defaults = { actions: false };
     try {
       const raw = localStorage.getItem(UI_STATE_KEY);
       if (!raw) return defaults;
@@ -176,6 +183,20 @@ class AssistMarkManager {
     // 先等伺服器草稿同步完成再開放鍵盤操作，避免在同步的空檔誤動到即將被伺服器版本蓋掉的本機資料
     await this._loadFromServer();
     this._bindGlobalKeys();
+    this._bindFlushOnLeave();
+  }
+
+  // 分頁被切走／關閉前，把還在 800ms debounce 排隊中的儲存立刻送出，
+  // 避免「錄製完成→馬上切頁或重新整理」時，最後一筆還沒送到伺服器就被下次讀取的舊草稿蓋掉。
+  _bindFlushOnLeave() {
+    const flush = () => {
+      if (!this._saveTimer) return;
+      clearTimeout(this._saveTimer);
+      this._saveTimer = null;
+      this._pushToServer({ keepalive: true });
+    };
+    document.addEventListener("visibilitychange", () => { if (document.hidden) flush(); });
+    window.addEventListener("pagehide", flush);
   }
 
   async _authedFetch(url, opts = {}) {
@@ -192,11 +213,17 @@ class AssistMarkManager {
 
   // 開啟時向伺服器要目前共用的草稿並蓋掉本機暫存，這樣不同客戶端打開時看到的進度一致，
   // 不會像純 localStorage 那樣各自為政。讀取失敗（離線等）時維持目前本機草稿即可。
+  // 但如果本機草稿的 lastSavedAt 比伺服器新（例如剛錄完一筆、800ms debounce 還沒送出就重新整理），
+  // 代表伺服器那份還是舊的，此時不能覆蓋本機，反而要把本機這份補送上去，否則剛錄好的計時就會憑空消失。
   async _loadFromServer() {
     try {
       const res = await this._authedFetch(`${getApiUrl()}${API_ENDPOINTS.ASSIST_MARK.DRAFT}`);
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (!data.success || !data.draft) return;
+      if ((this._state.lastSavedAt || 0) > (data.draft.lastSavedAt || 0)) {
+        this._pushToServer();
+        return;
+      }
       this._state = data.draft;
       this._migrateLegacyDraft();
       this._migrateColumnOrder();
@@ -213,12 +240,13 @@ class AssistMarkManager {
     this._saveTimer = setTimeout(() => this._pushToServer(), 800);
   }
 
-  async _pushToServer() {
+  async _pushToServer({ keepalive = false } = {}) {
     try {
       await this._authedFetch(`${getApiUrl()}${API_ENDPOINTS.ASSIST_MARK.DRAFT}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(this._state),
+        keepalive,
       });
     } catch {
       // 同步失敗不中斷編輯，本機仍保留最新內容，下次異動會再次觸發同步
@@ -351,6 +379,61 @@ class AssistMarkManager {
     this._ensureShape();
     this._saveDraft();
     this._render();
+  }
+
+  // 從「名單比對」分頁把已經比對到、且已有花費時間的 assistDataRows 回填進輔助標記「目前已有」的表格，
+  // 只補空白的花費時間欄，不重建、不覆蓋其他欄位或已經有值的花費時間。
+  // 比對鍵是「實驗ID（＋受試者ID）」，同一鍵有多筆時再用「手勢指令」對應到正確的那一列。
+  _importAttemptRows(attemptRows, sourceLabel) {
+    if (!attemptRows.length) return;
+    if (!this._state.rows.length) {
+      showToast("輔助標記目前是空的，請先載入原始表格（上傳檔案或貼上內容），再回填花費時間。", "warning", 6000);
+      return;
+    }
+    const headers = this._state.headers;
+    const experimentIdCol = findColumnIndex(headers, /experiment_?id|實驗(代碼|id)|^代碼$/i);
+    const trackingIdCol = findColumnIndex(headers, /^(id|受試者id)$/i);
+    const gestureCommandCol = findColumnIndex(headers, /gesture_command|手勢指令/i);
+    const durationCol = this._state.durationCol;
+    if (experimentIdCol < 0 || durationCol == null) {
+      showToast(`輔助標記目前的表格找不到「實驗ID」或「花費時間」欄位，無法比對回填。\n目前的欄位名稱是：${headers.join("、") || "（無）"}`, "error", 8000);
+      return;
+    }
+
+    const keyOf = (expId, tId) => (tId ? `${tId}::${expId}` : expId);
+    const queueByKey = new Map();
+    for (const a of attemptRows) {
+      const expId = String(a.experimentId || "").trim().toLowerCase();
+      if (!expId || !a.duration) continue;
+      const tId = a.trackingId != null ? String(a.trackingId).trim().toLowerCase() : "";
+      const key = keyOf(expId, tId);
+      if (!queueByKey.has(key)) queueByKey.set(key, []);
+      queueByKey.get(key).push(a);
+    }
+
+    let filled = 0;
+    for (const row of this._state.rows) {
+      if (sanitizeCellText(row[durationCol]) !== "") continue; // 已有花費時間，不覆蓋
+      const expId = sanitizeCellText(row[experimentIdCol]).trim().toLowerCase();
+      if (!expId) continue;
+      const tId = trackingIdCol >= 0 ? sanitizeCellText(row[trackingIdCol]).trim().toLowerCase() : "";
+      const queue = queueByKey.get(keyOf(expId, tId));
+      if (!queue?.length) continue;
+      let idx = 0;
+      if (gestureCommandCol >= 0) {
+        const cmd = sanitizeCellText(row[gestureCommandCol]).trim().toLowerCase();
+        const found = queue.findIndex(a => String(a.gestureCommand || "").trim().toLowerCase() === cmd);
+        if (found >= 0) idx = found;
+      }
+      const [match] = queue.splice(idx, 1);
+      row[durationCol] = match.duration;
+      filled++;
+    }
+    this._saveDraft();
+    this._render();
+    showToast(filled > 0
+      ? `已從「${sourceLabel}」回填 ${filled} 筆花費時間到現有表格。`
+      : "找不到可對應的列可回填花費時間，請確認「實驗ID」「受試者ID」欄位內容是否一致。", filled > 0 ? "success" : "warning", 6000);
   }
 
   _bindGlobalKeys() {
@@ -559,8 +642,8 @@ class AssistMarkManager {
   }
 
   _focusPasteBox() {
-    if (this._uiState.paste) {
-      this._uiState.paste = false;
+    if (this._uiState.actions) {
+      this._uiState.actions = false;
       this._saveUiState();
       this._render();
     }
@@ -610,7 +693,7 @@ class AssistMarkManager {
             <div class="assist-mark-subtitle">${escapeHtml(st.title || "尚未載入資料")}</div>
           </div>
           <div class="assist-mark-actions-group">
-            <button type="button" class="assist-mark-collapse-btn" data-assist-toggle="actions" aria-expanded="${ui.actions ? "false" : "true"}" title="收合/展開操作按鈕">${COLLAPSE_CHEVRON_SVG}操作按鈕</button>
+            <button type="button" class="assist-mark-collapse-btn" data-assist-toggle="actions" aria-expanded="${ui.actions ? "false" : "true"}" title="收合/展開操作按鈕、草稿與說明、貼上內容">${COLLAPSE_CHEVRON_SVG}操作按鈕</button>
             <div class="assist-mark-actions${ui.actions ? " is-collapsed" : ""}">
               ${headerModeSelect}
               <button class="archive-action-btn" data-assist-action="paste">貼上內容</button>
@@ -621,17 +704,15 @@ class AssistMarkManager {
             </div>
           </div>
         </div>
-        <div class="assist-mark-status-bar">
-          <button type="button" class="assist-mark-collapse-btn" data-assist-toggle="status" aria-expanded="${ui.status ? "false" : "true"}" title="收合/展開草稿與說明">${COLLAPSE_CHEVRON_SVG}草稿與說明</button>
-          <div class="assist-mark-status-content${ui.status ? " is-collapsed" : ""}">
+        <div class="assist-mark-status-bar${ui.actions ? " is-collapsed" : ""}">
+          <div class="assist-mark-status-content">
             <span data-assist-status>草稿已暫存</span>
             <span class="assist-mark-help">每列右側「錄製」欄可開始／停止計時：第一次錄製停止後自動儲存並跳到下一筆；重錄則停止後選擇儲存或取消；方向鍵切格、Tab 連續移動、Space/Enter 開始或結束計時、Esc 取消</span>
           </div>
           <input type="file" id="assistMarkFileInput" accept=".xlsx,.xls,.csv,.txt" hidden>
         </div>
-        <div class="assist-mark-paste-section">
-          <button type="button" class="assist-mark-collapse-btn" data-assist-toggle="paste" aria-expanded="${ui.paste ? "false" : "true"}" title="收合/展開貼上區">${COLLAPSE_CHEVRON_SVG}貼上內容</button>
-          <textarea class="assist-mark-pastebox${ui.paste ? " is-collapsed" : ""}" id="assistMarkPasteBox" placeholder="在這裡直接貼上 Excel 複製的表格內容，或先點選「貼上內容」再貼上。"></textarea>
+        <div class="assist-mark-paste-section${ui.actions ? " is-collapsed" : ""}">
+          <textarea class="assist-mark-pastebox" id="assistMarkPasteBox" placeholder="在這裡直接貼上 Excel 複製的表格內容，或先點選「貼上內容」再貼上。"></textarea>
         </div>
         <div class="assist-mark-table-wrap">
           ${tableHtml}
@@ -825,4 +906,9 @@ export function onAssistMarkActivate() {
   const el = document.getElementById("archiveAssistMark");
   if (!el) return;
   _manager.init(el);
+}
+
+// 供「名單比對」分頁呼叫：把 attemptRows（見 _importAttemptRows）已有花費時間的部分回填進輔助標記現有表格。
+export function importAttemptRowsToAssistMark(attemptRows, sourceLabel) {
+  _manager._importAttemptRows(attemptRows, sourceLabel);
 }

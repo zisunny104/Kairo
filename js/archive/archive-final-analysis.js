@@ -7,10 +7,14 @@ import { getApiUrl } from "../core/url-utils.js";
 import { getAdminToken, clearAdminToken } from "../core/admin-auth.js";
 import { API_ENDPOINTS } from "../constants/index.js";
 import { downloadXlsx, downloadCsv } from "../core/xlsx-export.js";
-import { escapeHtml, showToast } from "./archive-constants.js";
+import {
+  escapeHtml, showToast, parseJsonResponse,
+  renderActionsCollapseBtn, loadCollapsedPref, saveCollapsedPref,
+} from "./archive-constants.js";
 import { getParticipants, getParticipantNameMap } from "./archive-roster.js";
 import { GestureAgreementCard, ErrorRateComparisonCard, ReactionTimeCard } from "./archive-final-analysis-cards.js";
 
+const ACTIONS_COLLAPSED_KEY = "archive_final_analysis_actions_collapsed_v1";
 const STAGE_LABELS = { "1": "第一階段", "2-1": "第二階段（第一次）", "2-2": "第二階段（第二次）" };
 const ROW_HEADERS = ["idx", "id", "experiment_id", "participant_name", "gesture_command", "type", "type_raw", "note", "花費時間"];
 
@@ -25,6 +29,7 @@ class FinalAnalysisManager {
     this._contentMode = "analysis";
     // 三張分析卡片固定存在，之後要加新的分析項目類型就在這裡追加一個 new XxxCard() 即可
     this._cards = [new GestureAgreementCard(), new ErrorRateComparisonCard(), new ReactionTimeCard()];
+    this._actionsCollapsed = loadCollapsedPref(ACTIONS_COLLAPSED_KEY);
   }
 
   init(container) {
@@ -58,7 +63,7 @@ class FinalAnalysisManager {
 
   async _buildStageRows(stage) {
     const res = await this._authedFetch(`${getApiUrl()}${API_ENDPOINTS.ANALYSIS.LIST}`);
-    const data = await res.json();
+    const data = await parseJsonResponse(res);
     if (!data.success) throw new Error(data.error || "未知錯誤");
     const records = (data.records || []).filter(r => r.stage === stage);
     const withAttempts = records.filter(r => r.attempts?.length);
@@ -146,17 +151,27 @@ class FinalAnalysisManager {
           <div class="assist-mark-title">最終分析</div>
           <div class="assist-mark-subtitle">${isPreviewMode ? "預覽「比對名單」已確認儲存的三階段逐筆手勢紀錄，確認無誤後再下載" : "各項統計分析卡片，點卡片內選項可切換要分析的資料範圍與呈現方式"}</div>
         </div>
-        <div class="assist-mark-actions">
-          <button class="archive-action-btn${!isPreviewMode ? " is-active" : ""}" data-final-mode="analysis">分析總覽</button>
-          <button class="archive-action-btn${isPreviewMode && this._previewStage === "1" ? " is-active" : ""}" data-final-preview="1" ${this._loading ? "disabled" : ""}>預覽第一階段</button>
-          <button class="archive-action-btn${isPreviewMode && this._previewStage === "2-1" ? " is-active" : ""}" data-final-preview="2-1" ${this._loading ? "disabled" : ""}>預覽第二階段（第一次）</button>
-          <button class="archive-action-btn${isPreviewMode && this._previewStage === "2-2" ? " is-active" : ""}" data-final-preview="2-2" ${this._loading ? "disabled" : ""}>預覽第二階段（第二次）</button>
-          <button class="archive-action-btn" data-final-download="csv" ${isPreviewMode && hasPreview ? "" : "disabled"}>下載 CSV</button>
-          <button class="archive-action-btn" data-final-download="xlsx" ${isPreviewMode && hasPreview ? "" : "disabled"}>下載 Excel</button>
+        <div class="assist-mark-actions-group">
+          ${renderActionsCollapseBtn("data-final-toggle-actions", this._actionsCollapsed)}
+          <div class="assist-mark-actions${this._actionsCollapsed ? " is-collapsed" : ""}">
+            <button class="archive-action-btn${!isPreviewMode ? " is-active" : ""}" data-final-mode="analysis">分析總覽</button>
+            <button class="archive-action-btn${isPreviewMode && this._previewStage === "1" ? " is-active" : ""}" data-final-preview="1" ${this._loading ? "disabled" : ""}>預覽第一階段</button>
+            <button class="archive-action-btn${isPreviewMode && this._previewStage === "2-1" ? " is-active" : ""}" data-final-preview="2-1" ${this._loading ? "disabled" : ""}>預覽第二階段（第一次）</button>
+            <button class="archive-action-btn${isPreviewMode && this._previewStage === "2-2" ? " is-active" : ""}" data-final-preview="2-2" ${this._loading ? "disabled" : ""}>預覽第二階段（第二次）</button>
+            <button class="archive-action-btn" data-final-download="csv" ${isPreviewMode && hasPreview ? "" : "disabled"}>下載 CSV</button>
+            <button class="archive-action-btn" data-final-download="xlsx" ${isPreviewMode && hasPreview ? "" : "disabled"}>下載 Excel</button>
+          </div>
         </div>
       </div>
       ${isPreviewMode ? missingHtml + tableHtml : cardsHtml}
     </div>`;
+
+    const toggleActionsBtn = this._container.querySelector("[data-final-toggle-actions]");
+    if (toggleActionsBtn) toggleActionsBtn.addEventListener("click", () => {
+      this._actionsCollapsed = !this._actionsCollapsed;
+      saveCollapsedPref(ACTIONS_COLLAPSED_KEY, this._actionsCollapsed);
+      this._render();
+    });
 
     this._container.querySelector("[data-final-mode=\"analysis\"]").addEventListener("click", () => this._showAnalysis());
     this._container.querySelectorAll("[data-final-preview]").forEach(btn => {

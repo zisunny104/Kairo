@@ -372,6 +372,97 @@ export function renderBoxPlot({ categories, boxStats, defaultTitle, defaultYLabe
   return `<div class="final-analysis-chart-export">${svg}${chartActionsHtml(filenameBase || "boxplot")}</div>`;
 }
 
+// ── 雷達圖：多構面比較用的 SVG 蜘蛛網圖，settings 可覆蓋標題/顯示標籤/顯示數值/顏色 ──
+export function renderRadarChart({ categories, series, getValue, defaultTitle, axisMax, formatTick, ariaLabel, settings, filenameBase }) {
+  if (!categories.length || categories.length < 3) return "<div class=\"assist-mark-empty\"><p>雷達圖至少需要 3 個構面才能繪製。</p></div>";
+
+  const title = settings?.get("title") || defaultTitle || "";
+  const showLabels = settings ? settings.get("showLabels") : true;
+  const showValues = settings ? settings.get("showValues") : false;
+  const customColor = settings?.get("color");
+  const colorFor = i => (i === 0 && customColor) ? customColor : CHART_PALETTE[i % CHART_PALETTE.length];
+  const fmtTick = formatTick || (v => String(Math.round(v * 100) / 100));
+
+  let maxVal = axisMax;
+  if (!maxVal) {
+    let observed = 0;
+    series.forEach(s => s.rowsByCategory.forEach(row => { observed = Math.max(observed, getValue(row) || 0); }));
+    maxVal = niceCeil((observed || 1) * 1.15);
+  }
+
+  const N = categories.length;
+  const size = 520, titleH = 34, legendH = series.length > 1 ? 30 : 0;
+  const R = size / 2 - 70;
+  const cx = size / 2, cy = titleH + (size - titleH) / 2 - 20;
+  const viewH = size + legendH;
+
+  const angleFor = i => -90 + i * (360 / N);
+  const pointAt = (r, angleDeg) => {
+    const rad = (angleDeg * Math.PI) / 180;
+    return [cx + r * Math.cos(rad), cy + r * Math.sin(rad)];
+  };
+
+  const rings = 4;
+  const gridPolys = Array.from({ length: rings }, (_, k) => {
+    const r = R * ((k + 1) / rings);
+    const pts = categories.map((_, i) => pointAt(r, angleFor(i)).map(n => n.toFixed(1)).join(",")).join(" ");
+    return `<polygon points="${pts}" fill="none" stroke="#ddd" stroke-width="1" />`;
+  }).join("");
+
+  const ringLabels = Array.from({ length: rings }, (_, k) => {
+    const val = maxVal * ((k + 1) / rings);
+    const [tx, ty] = pointAt(R * ((k + 1) / rings), -90);
+    return `<text x="${(tx + 4).toFixed(1)}" y="${(ty - 2).toFixed(1)}" font-size="10" fill="#888">${fmtTick(val)}</text>`;
+  }).join("");
+
+  const axisLines = categories.map((_, i) => {
+    const [x, y] = pointAt(R, angleFor(i));
+    return `<line x1="${cx.toFixed(1)}" y1="${cy.toFixed(1)}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="#ccc" stroke-width="1" />`;
+  }).join("");
+
+  const axisLabels = showLabels ? categories.map((cat, i) => {
+    const ang = angleFor(i);
+    const [x, y] = pointAt(R + 24, ang);
+    const cosv = Math.cos((ang * Math.PI) / 180);
+    const anchor = Math.abs(cosv) < 0.2 ? "middle" : (cosv > 0 ? "start" : "end");
+    return `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="${anchor}" font-size="11" fill="#222">${escapeHtml(cat)}</text>`;
+  }).join("") : "";
+
+  const seriesSvg = series.map((s, si) => {
+    const color = colorFor(si);
+    const pts = categories.map((_, i) => {
+      const row = s.rowsByCategory[i];
+      const v = Math.max(0, Math.min(maxVal, getValue(row) || 0));
+      return pointAt((v / maxVal) * R, angleFor(i));
+    });
+    const polyPts = pts.map(p => p.map(n => n.toFixed(1)).join(",")).join(" ");
+    const dots = pts.map(([x, y], i) => {
+      const row = s.rowsByCategory[i];
+      const v = getValue(row) || 0;
+      const valueSvg = showValues ? `<text x="${x.toFixed(1)}" y="${(y - 8).toFixed(1)}" text-anchor="middle" font-size="10" fill="#111">${fmtTick(v)}</text>` : "";
+      return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="${color}" />${valueSvg}`;
+    }).join("");
+    return `<polygon points="${polyPts}" fill="${color}" fill-opacity="0.18" stroke="${color}" stroke-width="2" />${dots}`;
+  }).join("");
+
+  const titleSvg = title ? `<text x="${size / 2}" y="20" text-anchor="middle" font-size="14" font-weight="700" fill="#111">${escapeHtml(title)}</text>` : "";
+
+  const svg = `<svg viewBox="0 0 ${size} ${viewH}" class="final-analysis-chart-svg" role="img" aria-label="${escapeHtml(ariaLabel || "雷達圖")}">
+    <rect x="0" y="0" width="${size}" height="${viewH}" fill="#ffffff" />
+    ${titleSvg}${gridPolys}${axisLines}${ringLabels}${seriesSvg}${axisLabels}
+  </svg>`;
+
+  const legend = series.length > 1
+    ? `<div class="final-analysis-chart-legend">${series.map((s, i) => `<span class="final-analysis-chart-legend-item"><span class="final-analysis-chart-swatch" style="background:${colorFor(i)}"></span>${escapeHtml(s.label)}</span>`).join("")}</div>`
+    : "";
+
+  return `<div class="final-analysis-chart-export">
+    ${svg}
+    ${legend}
+    ${chartActionsHtml(filenameBase || "radar")}
+  </div>`;
+}
+
 export function wireChartExports(container) {
   wireChartExportButtons(container);
 }

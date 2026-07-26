@@ -22,6 +22,7 @@ import recordRouter from "./routes/record.js";
 import rosterRouter from "./routes/roster.js";
 import analysisRouter from "./routes/analysis.js";
 import assistMarkRouter from "./routes/assist-mark.js";
+import questionnaireRouter from "./routes/questionnaire.js";
 
 // 匯入 WebSocket 系統
 import { WSServer } from "./websocket/WSServer.js";
@@ -118,6 +119,7 @@ app.use("/api/record", recordRouter);
 app.use("/api/roster", rosterRouter);
 app.use("/api/analysis", analysisRouter);
 app.use("/api/assist-mark", assistMarkRouter);
+app.use("/api/questionnaire", questionnaireRouter);
 
 // 根路徑（僅回傳最低限度資訊，不公開 API 結構）
 app.get("/", (req, res) => {
