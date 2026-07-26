@@ -39,6 +39,22 @@ export function downloadXlsx(rows, filename, sheetName = "Sheet1") {
   downloadBlob(blob, withTimestamp(filename, ".xlsx"));
 }
 
+/** sheets：[{ name, rows }]，把多份表格匯出成同一個檔案裡的不同分頁（工作表）。 */
+export function downloadXlsxMultiSheet(sheets, filename) {
+  const valid = sheets.filter(s => s.rows && s.rows.length);
+  if (!valid.length) return;
+  const book = XLSX.utils.book_new();
+  valid.forEach(({ name, rows }) => {
+    const sheet = XLSX.utils.aoa_to_sheet(rows);
+    // Excel 分頁名稱不能超過 31 字元、不能包含 \ / ? * [ ] :
+    const safeName = String(name || "Sheet").replace(/[\\/?*[\]:]/g, "_").slice(0, 31);
+    XLSX.utils.book_append_sheet(book, sheet, safeName);
+  });
+  const data = XLSX.write(book, { bookType: "xlsx", type: "array" });
+  const blob = new Blob([data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  downloadBlob(blob, withTimestamp(filename, ".xlsx"));
+}
+
 export function downloadCsv(rows, filename) {
   if (!rows.length) return;
   const escapeCsv = value => {

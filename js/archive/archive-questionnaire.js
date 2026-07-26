@@ -108,8 +108,16 @@ class QuestionnaireManager {
   // 讀取失敗（離線等）時維持本機草稿即可，不中斷操作
   async init(container) {
     this._container = container;
+    // 草稿可能一開頁就已經是 dashboard 階段（上次已套用過對應，重新整理或換裝置回來），
+    // 這種情況不會經過 _applyMapping() 去抓名冊，_nameMap 若還是空的，比對會全部誤判成查無資料。
+    if (this._state.stage === "dashboard") await this._ensureNameMap();
     this._render();
     await this._loadFromServer();
+  }
+
+  async _ensureNameMap() {
+    if (this._nameMap.size) return;
+    this._nameMap = await getParticipantNameMap().catch(() => new Map());
   }
 
   async _authedFetch(url, opts = {}) {
@@ -131,6 +139,7 @@ class QuestionnaireManager {
       if (!data.success || !data.draft) return;
       this._state = { ...createDefaultState(), ...data.draft };
       this._saveLocalDraft();
+      if (this._state.stage === "dashboard") await this._ensureNameMap();
       this._render();
     } catch {
       // 讀取失敗時維持目前（本機）草稿，使用者仍可照常操作
@@ -291,7 +300,8 @@ class QuestionnaireManager {
           <input type="file" id="qnrFileInput" accept=".xlsx,.xls,.csv,.txt" hidden>
           ${hasHeaders ? "<button class=\"archive-action-btn\" id=\"qnrDownloadRawCsvBtn\">下載原始資料（CSV）</button>" : ""}
           ${hasHeaders ? "<button class=\"archive-action-btn\" id=\"qnrDownloadRawXlsxBtn\">下載原始資料（Excel）</button>" : ""}
-          ${hasHeaders ? "<button class=\"archive-action-btn archive-action-btn--danger\" id=\"qnrResetBtn\">清除重來</button>" : ""}
+          <!-- 「清除重來」按鈕暫時隱藏（短期不會用到整批清空，只會單項修改／替換），處理函式 _resetAll() 保留以便之後要恢復 -->
+          ${false && hasHeaders ? "<button class=\"archive-action-btn archive-action-btn--danger\" id=\"qnrResetBtn\">清除重來</button>" : ""}
         </div>
       </div>
       ${hasHeaders ? `<div class="qnr-mapping-panel">

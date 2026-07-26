@@ -198,6 +198,19 @@ class MatchMarkManager {
     // 貼上區是否展開：純粹本次畫面狀態，不寫入草稿也不記本機偏好——一定要按過「貼上內容」才會展開，
     // 收合「操作」時也會一併重置成 false，避免展開操作後貼上區無緣無故自己冒出來。
     this._pasteOpen = false;
+    // 鎖定「清除已儲存資料」「刪除手勢紀錄」兩顆刪除按鈕，避免手滑誤觸；純畫面狀態不寫入草稿，
+    // 每次重新整理頁面都預設鎖定，只有解除鎖定才需要 confirm 二次確認（重新鎖定不用）。
+    this._locked = true;
+  }
+
+  _toggleLock() {
+    if (this._locked) {
+      if (!confirm("確定要解除鎖定？解除後「清除已儲存資料」「刪除手勢紀錄」按鈕會恢復可點擊，請小心操作。")) return;
+      this._locked = false;
+    } else {
+      this._locked = true;
+    }
+    this._render();
   }
 
   async init(container) {
@@ -911,6 +924,15 @@ class MatchMarkManager {
         }),
       });
       const data = await parseJsonResponse(res);
+      // 伺服器上已有這個受試者・這個階段的舊紀錄、且欄位跟這次不同時會回衝突，
+      // 之前這裡只看 data.success，衝突會被當成「存檔失敗」直接吞掉、畫面仍顯示「已讀入」，
+      // 使用者會誤以為存成功了，但伺服器那份其實還是舊資料——改成跟「全部儲存」一樣，
+      // 把衝突攤開讓使用者選，不要默默失敗。
+      if (res.status === 409 && data.conflict) {
+        row.saveConflict = data.conflicts.map(cf => ({ ...cf, choice: "incoming" }));
+        this._render();
+        return;
+      }
       if (data.success) row._savedSignature = this._rowSignature(row);
     } catch { /* 寫入失敗不中斷比對流程，草稿仍保留資料，之後可重新觸發 */ }
   }
@@ -1043,8 +1065,12 @@ class MatchMarkManager {
       row.assistDataRows = null;
       row.saveConflict = null;
       row._savedSignature = null; // 伺服器紀錄已被刪除，強制視為未同步，之後重新比對存檔時一定會再送一次
+      row._logAttemptsCache = null; // 這份快取是被刪除那筆紀錄的手勢資料，留著的話畫面上還會顯示，看起來像沒刪成功
       this._saveDraft();
       this._render();
+      // 沒有候選檔案的列，清除前後畫面（未處理徽章、清除按鈕）看起來完全一樣，
+      // 一定要跳提示告訴使用者「有刪成功」，不然會誤以為按了沒反應。
+      showToast(`已清除「${label}」已儲存的分析資料。`, "success");
     } catch (err) {
       showToast(`清除失敗：${err.message}`, "error");
     }
@@ -1215,6 +1241,27 @@ class MatchMarkManager {
     this._render();
   }
 
+  // 刪掉單一筆手勢紀錄（通常用在「多餘、不該存在的標記」導致缺花費時間的情況）。
+  // 輔助標記匯入的資料直接改 assistDataRows；讀入日誌檔翻譯出來的資料改存在記憶體裡的
+  // _logAttemptsCache——之後只要沒有換檔案（沒觸發「重新讀入」找到新檔），就會沿用這份
+  // 刪過的結果，不會被重新解析原始日誌蓋回來。
+  _deleteAttempt(idx, attemptIdx) {
+    const row = this._state.rows[idx];
+    if (!row) return;
+    if (!confirm("確定要刪除這一筆手勢紀錄嗎？如果不是多餘的標記，可能要重新讀入／重新匯入才能救回來。")) return;
+    if (!confirm("再次確認：這筆刪除後不會保留備份，確定要刪除嗎？")) return;
+    if (row.assistDataRows?.length) {
+      row.assistDataRows.splice(attemptIdx, 1);
+    } else if (row._logAttemptsCache?.attempts) {
+      row._logAttemptsCache.attempts.splice(attemptIdx, 1);
+    } else {
+      return;
+    }
+    this._saveDraft();
+    this._render();
+    this._saveAnalysisFile(row).then(() => this._render());
+  }
+
   _setColumnRole(colIdx, role) {
     this._state.columnRoles[colIdx] = role;
     this._deriveRows();
@@ -1229,21 +1276,17 @@ class MatchMarkManager {
     this._render();
   }
 
-  _resetAll() {
-    this._state = createDefaultState();
-    this._expanded.clear();
-    this._previewOpen.clear();
-    this._previewLoading.clear();
-    try { localStorage.removeItem(DRAFT_KEY); } catch { /* noop */ }
-    this._scheduleServerSync(); // 把清空後的狀態同步上去，避免其他裝置／分頁之後又把舊草稿蓋回來
-    this._render();
-  }
-
   // ── 渲染 ──────────────────────────────────────────────────────────────────
+
+  // 除了外層列表捲軸，列表裡展開後的「候選檔案預覽」內文也有自己的捲軸；任何一次操作都是整包
+  // innerHTML 重繪，不一併記錄的話，捲到預覽內容下方時點一下就會被打回最頂部。
+  _scrollPreserveSelector() {
+    return ".match-mark-rows-wrap, .match-mark-preview-attempts";
+  }
 
   _render() {
     if (!this._container) return;
-    const scrollTop = this._container.querySelector(".match-mark-rows-wrap")?.scrollTop ?? 0;
+    const scrollTops = Array.from(this._container.querySelectorAll(this._scrollPreserveSelector())).map(el => el.scrollTop);
     const st = this._state;
     const hasData = st.rows.length > 0;
 
@@ -1271,15 +1314,12 @@ class MatchMarkManager {
           <div class="assist-mark-actions-group">
             ${renderActionsCollapseBtn("data-match-toggle-actions", this._actionsCollapsed)}
             <div class="assist-mark-actions${this._actionsCollapsed ? " is-collapsed" : ""}">
-              <button class="archive-action-btn" data-match-action="load-roster">載入已存名單</button>
               <button class="archive-action-btn" data-match-action="import-assist" ${hasData ? "" : "disabled"}>從輔助標記匯入</button>
-              <button class="archive-action-btn" data-match-action="export-assist" ${hasData ? "" : "disabled"} title="把目前已比對到的花費時間回填進「輔助標記」現有表格裡對得起來、還空白的那些列，不影響其他欄位">回填花費時間到輔助標記</button>
               <button class="archive-action-btn" data-match-action="paste">貼上內容</button>
               <button class="archive-action-btn" data-match-action="file">選擇檔案</button>
-              <button class="archive-action-btn" data-match-action="refresh-server">重新載入伺服器清單</button>
               <button class="archive-action-btn" data-match-action="toggle-hide-completed" ${hasData ? "" : "disabled"} title="切換只顯示還沒讀入資料的列，方便專注在剩下待處理的部分">${this._hideCompleted ? "顯示全部" : "僅顯示待處理"}</button>
               <button class="archive-action-btn" data-match-action="save-all" ${hasData && !this._savingAll ? "" : "disabled"}>${this._savingAll ? "儲存中…" : "全部儲存"}</button>
-              <button class="archive-action-btn archive-action-btn--danger" data-match-action="reset" ${hasData && !this._savingAll ? "" : "disabled"}>清空</button>
+              <button class="archive-action-btn${this._locked ? "" : " archive-action-btn--danger"}" data-match-action="toggle-lock" title="鎖定「清除已儲存資料」「刪除手勢紀錄」按鈕，避免手滑誤觸；解除鎖定需要再次確認">${this._locked ? "已鎖定資料，點此解鎖" : "已解鎖，點此重新鎖定"}</button>
             </div>
           </div>
         </div>
@@ -1292,8 +1332,9 @@ class MatchMarkManager {
       </div>`;
 
     this._bindEvents();
-    const rowsWrap = this._container.querySelector(".match-mark-rows-wrap");
-    if (rowsWrap) rowsWrap.scrollTop = scrollTop;
+    this._container.querySelectorAll(this._scrollPreserveSelector()).forEach((el, i) => {
+      if (scrollTops[i] != null) el.scrollTop = scrollTops[i];
+    });
   }
 
   _renderSavingBanner() {
@@ -1322,13 +1363,11 @@ class MatchMarkManager {
     const allIdx = [];
     const pendingIdx = [];
     const completedIdx = [];
-    const needsRemarkIdx = [];
     const skippedIdx = [];
     rows.forEach((r, idx) => {
       allIdx.push(idx);
       if (this._isRowCompleted(r)) { completedIdx.push(idx); return; }
       const effective = this._effectiveDecision(r);
-      if (effective === "needs-remark") { needsRemarkIdx.push(idx); return; }
       if (effective === "skipped") { skippedIdx.push(idx); return; }
       pendingIdx.push(idx);
     });
@@ -1344,9 +1383,8 @@ class MatchMarkManager {
     };
     return `<div class="match-mark-stats${this._actionsCollapsed ? " is-collapsed" : ""}">
       ${chip("共", allIdx)}
-      ${chip("待確認", pendingIdx)}
+      ${chip("未處理", pendingIdx)}
       ${chip("已讀入", completedIdx, "match-mark-stat-chip--ok")}
-      ${chip("建議重新標記", needsRemarkIdx, "match-mark-stat-chip--warn")}
       ${chip("已略過", skippedIdx)}
     </div>`;
   }
@@ -1400,24 +1438,23 @@ class MatchMarkManager {
     return knownAttempts ? knownAttempts.filter(a => !a.duration).length : 0;
   }
 
-  // 「已完成」看這一列有沒有 matchedFilename（讀入日誌檔）或 assistDataRows（匯入輔助標記資料），
-  // 不額外存一個狀態去追蹤——避免又發生像修這個 bug 之前那樣，兩個值分開存卻忘記同步的問題。
-  // 兩者都是使用者主動觸發的讀入／匯入動作，等同已經確認過，不需要再另外標「待確認」。
-  // 但如果已知內容裡有缺花費時間的筆數，代表資料還有問題要看，不能算完成——不然被「僅顯示
-  // 待處理」篩掉之後，這種還沒修好的資料就整列消失、沒地方能再看到它。
+  // 「已完成」單純看這一列有沒有 matchedFilename（讀入日誌檔）或 assistDataRows（匯入輔助標記資料）——
+  // 使用者主動讀入／匯入了，就是已完成，不因為裡面某幾筆手勢缺花費時間就不算數。
+  // 缺花費時間是另一件事（資料品質提醒），用 _hasMissingDuration 另外標示、不影響完成與否的判斷，
+  // 也不會被「僅顯示待處理」篩選藏起來（見 _renderRows）。
   _isRowCompleted(row) {
-    return (!!row.matchedFilename || !!row.assistDataRows?.length)
-      && this._missingDurationCount(row) === 0;
+    return !!row.matchedFilename || !!row.assistDataRows?.length;
   }
 
-  // 「待確認／建議重新標記／已略過」的實際分類，統計列的下拉膠囊跟每一列自己的徽章要用同一套判斷，
-  // 否則會出現「建議重新標記 4」但點進去卻只看到「待確認」徽章的不一致情形。
-  // 沒有任何候選檔案、使用者也還沒手動處理過（decision 還是預設的 pending）的列，
-  // 代表這個實驗編號在伺服器上根本找不到對應的日誌檔，等同需要回去重新標記，因此視同「建議重新標記」。
+  _hasMissingDuration(row) {
+    return this._missingDurationCount(row) > 0;
+  }
+
+  // 「未處理／已略過」的實際分類，統計列的下拉膠囊跟每一列自己的徽章要用同一套判斷，
+  // 避免像先前那樣，統計數字跟每一列徽章各自分類、加總對不起來。
+  // 找不到候選檔案、或曾被標記需重新標記的列，都算「未處理」，不再另外獨立分類。
   _effectiveDecision(row) {
-    if (row.decision === "needs-remark") return "needs-remark";
     if (row.decision === "skipped") return "skipped";
-    if (row.candidates.length === 0 && row.decision === "pending" && row.stage !== "1") return "needs-remark";
     return "pending";
   }
 
@@ -1428,8 +1465,10 @@ class MatchMarkManager {
     if (!this._hideCompleted) {
       return st.rows.map((row, idx) => this._renderRow(row, idx)).join("");
     }
+    // 已完成但缺花費時間的列不算「沒事可看」，還是要留著，不然補時間補到一半的資料
+    // 一開「僅顯示待處理」就整批消失，找不到剩下哪幾筆還沒補。
     return st.rows
-      .map((row, idx) => this._isRowCompleted(row) ? "" : this._renderRow(row, idx))
+      .map((row, idx) => (this._isRowCompleted(row) && !this._hasMissingDuration(row)) ? "" : this._renderRow(row, idx))
       .join("");
   }
 
@@ -1437,13 +1476,13 @@ class MatchMarkManager {
     const expanded = this._expanded.has(idx);
     const loading  = this._loadingCandidates.has(idx);
     // 「已讀入」跟 _isRowCompleted 用同一套判斷（matchedFilename 或 assistDataRows），不看 decision——
-    // decision 只用來記另外幾種跟檔案無關的人工標註（待確認／建議重新標記／已略過）。
+    // decision 只用來記另外幾種跟檔案無關的人工標註（未處理／已略過）。
     const rowCompleted = this._isRowCompleted(row);
     const effectiveDecision = this._effectiveDecision(row);
     const decisionLabel = rowCompleted ? "已讀入"
-      : ({ pending: "待確認", "needs-remark": "建議重新標記", skipped: "已略過" }[effectiveDecision] || effectiveDecision);
+      : ({ pending: "未處理", skipped: "已略過" }[effectiveDecision] || effectiveDecision);
     const decisionClass = rowCompleted ? "is-ok"
-      : ({ pending: "", "needs-remark": "is-warn", skipped: "is-muted" }[effectiveDecision] || "");
+      : ({ pending: "", skipped: "is-muted" }[effectiveDecision] || "");
 
     const noCandidates = row.candidates.length === 0;
     // 只算目前候選名單裡真的還在的隱藏檔名，避免候選規則調整後殘留的隱藏紀錄
@@ -1455,15 +1494,21 @@ class MatchMarkManager {
       : hiddenCount ? `${visibleCount} 個候選（${hiddenCount} 已隱藏）`
       : `${row.candidates.length} 個候選`;
     const candidatesHtml = expanded ? this._renderCandidates(row, idx, loading) : "";
-    const assistRows = row.assistDataRows;
     // 「缺時間」直接標在有問題的那顆膠囊上（顏色＋文字），不再另外用一個彙總數字的徽章——
     // 彙總數字只能告訴你「有幾筆」，看不出是哪一筆，還要多一步展開才找得到。
-    const assistHtml = assistRows?.length ? `<div class="match-mark-row-assist">
-      <span class="match-mark-assist-count">輔助標記 ${assistRows.length} 筆</span>
-      ${assistRows.map(a => {
+    // 不管來源是輔助標記匯入還是讀入日誌檔翻譯出來的，兩者資料結構一樣，用同一套顯示，
+    // 這樣讀入日誌檔的列也能跟輔助標記的列一樣，直接看到是哪幾筆缺時間，而不是只知道「還沒完成」。
+    const knownAttempts = this._knownAttemptsFor(row);
+    const attemptsSourceLabel = row.assistDataRows?.length ? "輔助標記" : "手勢紀錄";
+    // 缺時間有兩種可能：這筆是多餘、不該存在的標記（例如手誤重複標了一次），或是整份檔案
+    // 翻譯有問題。前者可以直接刪掉這一筆解決，後者刪了也沒用、還是得回去處理整份檔案，
+    // 所以只提供刪除、不自動判斷是哪種情況，由使用者自己確認再決定要不要刪。
+    const assistHtml = knownAttempts?.length ? `<div class="match-mark-row-assist">
+      <span class="match-mark-assist-count">${attemptsSourceLabel} ${knownAttempts.length} 筆</span>
+      ${knownAttempts.map((a, ai) => {
         const missing = !a.duration;
-        const timeText = missing ? "缺時間" : formatSecondsMs(parseClockMs(a.duration));
-        return `<span class="match-mark-assist-item${missing ? " is-warn" : ""}"${missing ? ` title="這筆手勢紀錄沒有花費時間，可能是日誌缺少對應的開始事件（例如直接用日誌時間戳翻譯、但找不到 gesture_step_start），建議確認內容"` : ""}>${a.gestureCommand ? escapeHtml(a.gestureCommand) : ""}${a.type ? " " + escapeHtml(a.type) : ""}${a.typeRaw ? "（" + escapeHtml(a.typeRaw) + "）" : ""}${a.note ? " · " + escapeHtml(a.note) : ""} · <span class="match-mark-assist-time">${timeText}</span></span>`;
+        const timeText = missing ? "⚠ 缺時間" : formatSecondsMs(parseClockMs(a.duration));
+        return `<span class="match-mark-assist-item${missing ? " is-warn" : ""}"${missing ? ` title="這筆手勢紀錄沒有花費時間，可能是日誌缺少對應的開始事件（例如直接用日誌時間戳翻譯、但找不到 gesture_step_start），也可能只是多餘的標記；如果確定是多的，可按右側「×」直接刪除這一筆"` : ""}>${a.gestureCommand ? escapeHtml(a.gestureCommand) : ""}${a.type ? " " + escapeHtml(a.type) : ""}${a.typeRaw ? "（" + escapeHtml(a.typeRaw) + "）" : ""}${a.note ? " · " + escapeHtml(a.note) : ""} · <span class="match-mark-assist-time">${timeText}</span><button type="button" class="match-mark-assist-delete" data-match-delete-attempt="${idx}" data-match-delete-attempt-idx="${ai}" ${this._locked ? "disabled" : ""} title="${this._locked ? "資料已鎖定，請先點上方「已鎖定資料」按鈕解鎖" : "刪除這一筆手勢紀錄（例如多餘、重複的標記）"}">×</button></span>`;
       }).join("")}
     </div>` : "";
     const saveHtml = row.saveConflict ? `<div class="match-mark-row-actions match-mark-row-actions--save">
@@ -1477,7 +1522,7 @@ class MatchMarkManager {
         <span class="match-mark-row-cand-count">${row.stage === "1" && noCandidates ? "階段一無日誌檔（正常）" : candCountLabel}</span>
         <span class="match-mark-decision-badge ${decisionClass}">${decisionLabel}</span>
         ${row.matchedFilename ? `<button class="archive-action-btn archive-action-btn--sm" data-match-reopen="${idx}" title="檢查是否有剛剛編輯後另存的異常修正檔，找到就直接採用最新的一份；沒有新檔案就維持原樣不變">重新讀入</button>` : ""}
-        ${row.trackingId != null && row.stage ? `<button class="archive-action-btn archive-action-btn--sm archive-action-btn--danger" data-match-clear-saved="${idx}" title="刪除伺服器上這位受試者・這個階段已存的分析資料">清除已儲存資料</button>` : ""}
+        ${row.trackingId != null && row.stage ? `<button class="archive-action-btn archive-action-btn--sm archive-action-btn--danger" data-match-clear-saved="${idx}" ${this._locked ? "disabled" : ""} title="${this._locked ? "資料已鎖定，請先點上方「已鎖定資料」按鈕解鎖" : "刪除伺服器上這位受試者・這個階段已存的分析資料"}">清除已儲存資料</button>` : ""}
         <span class="match-mark-row-caret">${expanded ? "▾" : "▸"}</span>
       </div>
       ${assistHtml}
@@ -1659,7 +1704,7 @@ class MatchMarkManager {
           this._render();
         }
         if (action === "save-all") this._saveAllRows();
-        if (action === "reset" && confirm("確定要清空目前的比對名單與草稿嗎？此動作無法復原（已存檔的比對結果不受影響）。")) this._resetAll();
+        if (action === "toggle-lock") this._toggleLock();
       });
     });
 
@@ -1770,6 +1815,11 @@ class MatchMarkManager {
       btn.addEventListener("click", e => { e.stopPropagation(); this._gotoQuickRemark(Number(btn.dataset.matchGotoRemark)); }));
     c.querySelectorAll("[data-match-skip]").forEach(btn =>
       btn.addEventListener("click", e => { e.stopPropagation(); this._skipRow(Number(btn.dataset.matchSkip)); }));
+    c.querySelectorAll("[data-match-delete-attempt]").forEach(btn =>
+      btn.addEventListener("click", e => {
+        e.stopPropagation();
+        this._deleteAttempt(Number(btn.dataset.matchDeleteAttempt), Number(btn.dataset.matchDeleteAttemptIdx));
+      }));
     c.querySelectorAll("[data-match-clear-saved]").forEach(btn =>
       btn.addEventListener("click", e => { e.stopPropagation(); this._clearSavedAnalysis(Number(btn.dataset.matchClearSaved)); }));
     c.querySelectorAll("[data-match-edit-matched]").forEach(el =>

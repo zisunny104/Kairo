@@ -5,9 +5,23 @@
  * Analysis／Statistics 邏輯直接使用，不必各自重寫篩選迴圈。
  */
 import { escapeHtml } from "./archive-constants.js";
+import { sortByCommandOrder } from "./archive-final-analysis-stats.js";
 
 export const STAGE_LABELS = { "1": "Stage 1", "2-1": "Stage 2 - Round 1", "2-2": "Stage 2 - Round 2" };
 export const STAGE_ORDER = ["1", "2-1", "2-2"];
+
+// 手勢指令的顯示／篩選順序改成跟 data/scenarios.json 的 gesture_list 一致（機台鍵盤 0~9 的操作順序），
+// 不能用字母排序，否則清單、圖表跟報表看起來會跟實際操作流程對不起來。頁面存活期間只抓一次並快取。
+let _gestureOrderPromise = null;
+export function getGestureOrderMap() {
+  if (!_gestureOrderPromise) {
+    _gestureOrderPromise = fetch("./data/scenarios.json")
+      .then(res => res.json())
+      .then(data => new Map((data.gesture_list || []).map((g, i) => [g.gesture_id, i])))
+      .catch(() => new Map());
+  }
+  return _gestureOrderPromise;
+}
 
 // ── Data Source：資料集複選框 ──────────────────────────────────────────────
 export function renderDatasetPicker(records, selectedStages) {
@@ -44,20 +58,29 @@ export function discoverParticipants(records) {
   return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0], "zh-Hant", { numeric: true }));
 }
 
-export function discoverCommands(records) {
+export function discoverCommands(records, gestureOrder) {
   const set = new Set();
   for (const r of records) for (const a of r.attempts || []) set.add(a.gestureCommand || "（未知指令）");
+  return sortByCommandOrder(Array.from(set), gestureOrder, cmd => cmd);
+}
+
+// 性別清單只列名單上實際填寫過的值，不預設固定兩個選項，避免資料缺漏時清單裡出現空白選項
+export function discoverGenders(records) {
+  const set = new Set();
+  for (const r of records) if (r.participantGender) set.add(r.participantGender);
   return Array.from(set).sort((a, b) => a.localeCompare(b, "zh-Hant"));
 }
 
-// records 應該只放「目前已勾選的資料集（stage）」範圍內的資料，這樣受試者／指令清單才不會
-// 一直列出跟目前選取範圍無關的人或指令；selectedParticipants/selectedCommands 是否已涵蓋
+// records 應該只放「目前已勾選的資料集（stage）」範圍內的資料，這樣受試者／指令／性別清單才不會
+// 一直列出跟目前選取範圍無關的人、指令或性別；selectedParticipants/selectedCommands/selectedGenders 是否已涵蓋
 // 目前清單的「全選」按鈕文字也是依這份清單判斷。
-export function renderFilterPanel(records, selectedParticipants, selectedCommands) {
+export function renderFilterPanel(records, selectedParticipants, selectedCommands, selectedGenders, gestureOrder) {
   const participants = discoverParticipants(records);
-  const commands = discoverCommands(records);
+  const commands = discoverCommands(records, gestureOrder);
+  const genders = discoverGenders(records);
   const allParticipantsSelected = participants.length > 0 && participants.every(([id]) => selectedParticipants.has(id));
   const allCommandsSelected = commands.length > 0 && commands.every(cmd => selectedCommands.has(cmd));
+  const allGendersSelected = genders.length > 0 && genders.every(g => selectedGenders.has(g));
   const participantItems = participants.map(([id, name]) => {
     const checked = selectedParticipants.has(id) ? "checked" : "";
     return `<label class="final-analysis-scope-item">
@@ -70,6 +93,13 @@ export function renderFilterPanel(records, selectedParticipants, selectedCommand
     return `<label class="final-analysis-scope-item">
       <input type="checkbox" data-filter-command="${escapeHtml(cmd)}" ${checked}>
       <span>${escapeHtml(cmd)}</span>
+    </label>`;
+  }).join("");
+  const genderItems = genders.map(g => {
+    const checked = selectedGenders.has(g) ? "checked" : "";
+    return `<label class="final-analysis-scope-item">
+      <input type="checkbox" data-filter-gender="${escapeHtml(g)}" ${checked}>
+      <span>${escapeHtml(g)}</span>
     </label>`;
   }).join("");
   return `<div class="final-analysis-scope-group">
@@ -85,34 +115,47 @@ export function renderFilterPanel(records, selectedParticipants, selectedCommand
       <button type="button" class="archive-action-btn archive-action-btn--sm" data-filter-select-all="command" ${commands.length ? "" : "disabled"}>${allCommandsSelected ? "清除全選" : "全選"}</button>
     </div>
     <div class="final-analysis-scope-items final-analysis-scope-items--scroll">${commandItems || "<p class=\"final-analysis-donut-empty\">尚無指令資料</p>"}</div>
+  </div>
+  <div class="final-analysis-scope-group">
+    <div class="final-analysis-scope-group-title final-analysis-scope-group-title--static">
+      <span>性別</span>
+      <button type="button" class="archive-action-btn archive-action-btn--sm" data-filter-select-all="gender" ${genders.length ? "" : "disabled"}>${allGendersSelected ? "清除全選" : "全選"}</button>
+    </div>
+    <div class="final-analysis-scope-items">${genderItems || "<p class=\"final-analysis-donut-empty\">尚無性別資料</p>"}</div>
   </div>`;
 }
 
-export function wireFilterPanel(container, onToggleParticipant, onToggleCommand, onToggleAllParticipants, onToggleAllCommands) {
+export function wireFilterPanel(container, onToggleParticipant, onToggleCommand, onToggleGender, onToggleAllParticipants, onToggleAllCommands, onToggleAllGenders) {
   container.querySelectorAll("[data-filter-participant]").forEach(el => {
     el.addEventListener("change", () => onToggleParticipant(el.dataset.filterParticipant, el.checked));
   });
   container.querySelectorAll("[data-filter-command]").forEach(el => {
     el.addEventListener("change", () => onToggleCommand(el.dataset.filterCommand, el.checked));
   });
+  container.querySelectorAll("[data-filter-gender]").forEach(el => {
+    el.addEventListener("change", () => onToggleGender(el.dataset.filterGender, el.checked));
+  });
   container.querySelector('[data-filter-select-all="participant"]')?.addEventListener("click", () => onToggleAllParticipants?.());
   container.querySelector('[data-filter-select-all="command"]')?.addEventListener("click", () => onToggleAllCommands?.());
+  container.querySelector('[data-filter-select-all="gender"]')?.addEventListener("click", () => onToggleAllGenders?.());
 }
 
 // ── 套用資料來源＋篩選，回傳依資料集（stage）分組的結果 ──────────────────
-// 回傳：[{ stage, label, records, attempts }]，attempts 已附上 trackingId／participantName 方便卡片依受試者分組配對
-export function filterAttempts(records, { stages, participantIds, commands }) {
+// 回傳：[{ stage, label, records, attempts }]，attempts 已附上 trackingId／participantName／participantGender 方便卡片依受試者分組配對
+export function filterAttempts(records, { stages, participantIds, commands, genders }) {
   const groups = [];
   for (const stage of STAGE_ORDER) {
     if (!stages.has(stage)) continue;
-    const stageRecords = records.filter(r => r.stage === stage && (!participantIds.size || participantIds.has(String(r.trackingId))));
+    const stageRecords = records.filter(r => r.stage === stage
+      && (!participantIds.size || participantIds.has(String(r.trackingId)))
+      && (!genders || !genders.size || genders.has(r.participantGender || "")));
     if (!stageRecords.length) continue;
     const attempts = [];
     for (const r of stageRecords) {
       for (const a of (r.attempts || [])) {
         const command = a.gestureCommand || "（未知指令）";
         if (commands.size && !commands.has(command)) continue;
-        attempts.push({ ...a, gestureCommand: command, trackingId: r.trackingId, participantName: r.participantName || "" });
+        attempts.push({ ...a, gestureCommand: command, trackingId: r.trackingId, participantName: r.participantName || "", participantGender: r.participantGender || "" });
       }
     }
     groups.push({ stage, label: STAGE_LABELS[stage] || stage, records: stageRecords, attempts });

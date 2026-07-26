@@ -133,14 +133,17 @@ function chartActionsHtml(filenameBase) {
 const SETTINGS_DEFAULTS = { title: "", xLabel: "", yLabel: "", showLabels: true, showValues: false, color: "" };
 
 export class ChartSettings {
-  constructor() { this._s = { ...SETTINGS_DEFAULTS }; }
+  // scopeId：同一張卡片內若要並列多組圖表設定（例如「總覽」與「依指令」各自的標題/軸標籤），
+  // 各自傳不同的 scopeId，wire() 才不會抓到別組設定面板的欄位，互相覆寫彼此的值。
+  constructor(scopeId = null) { this._s = { ...SETTINGS_DEFAULTS }; this._scopeId = scopeId; }
   get(key) { return this._s[key]; }
   set(key, value) { this._s[key] = value; }
   resetToDefault() { this._s = { ...SETTINGS_DEFAULTS }; }
 
   renderPanel() {
     const s = this._s;
-    return `<div class="final-analysis-chart-settings">
+    const scopeAttr = this._scopeId ? ` data-chart-settings-scope="${escapeHtml(this._scopeId)}"` : "";
+    return `<div class="final-analysis-chart-settings"${scopeAttr}>
       <label class="final-analysis-chart-settings-field">圖表標題
         <input type="text" data-chart-setting="title" value="${escapeHtml(s.title)}" placeholder="（自動）">
       </label>
@@ -164,14 +167,16 @@ export class ChartSettings {
   }
 
   wire(container, onChange) {
-    container.querySelectorAll("[data-chart-setting]").forEach(el => {
+    const scope = this._scopeId ? container.querySelector(`[data-chart-settings-scope="${this._scopeId}"]`) : container;
+    if (!scope) return;
+    scope.querySelectorAll("[data-chart-setting]").forEach(el => {
       const key = el.dataset.chartSetting;
       el.addEventListener("change", () => {
         this._s[key] = el.type === "checkbox" ? el.checked : el.value;
         onChange();
       });
     });
-    const resetBtn = container.querySelector("[data-chart-settings-reset]");
+    const resetBtn = scope.querySelector("[data-chart-settings-reset]");
     if (resetBtn) resetBtn.addEventListener("click", () => { this.resetToDefault(); onChange(); });
   }
 }
@@ -480,13 +485,16 @@ export function wireChartExports(container) {
 
 // ── 通用資料表格：排序／搜尋／複製／匯出 CSV ──────────────────────────────
 export class DataTableView {
-  constructor() {
+  // scopeId：同一張卡片內若要並列多個表格（例如「總覽」與「依指令」），
+  // 各自傳不同的 scopeId，wire() 才不會抓到別的表格的排序／搜尋/複製按鈕。
+  constructor(scopeId = null) {
     this._headers = [];
     this._rows = [];
     this._sortCol = null;
     this._sortDir = 1;
     this._query = "";
     this._searchFocused = false;
+    this._scopeId = scopeId;
   }
 
   setData(headers, rows) {
@@ -521,7 +529,8 @@ export class DataTableView {
       return `<th data-table-sort="${i}">${escapeHtml(String(h))}${arrow}</th>`;
     }).join("")}</tr>`;
     const tbodyHtml = rows.map(row => `<tr>${row.map(cell => `<td>${escapeHtml(String(cell ?? ""))}</td>`).join("")}</tr>`).join("");
-    return `<div class="final-analysis-datatable">
+    const scopeAttr = this._scopeId ? ` data-table-scope="${escapeHtml(this._scopeId)}"` : "";
+    return `<div class="final-analysis-datatable"${scopeAttr}>
       <div class="final-analysis-datatable-toolbar">
         <input type="search" class="final-analysis-datatable-search" placeholder="搜尋表格內容…" value="${escapeHtml(this._query)}">
         <div class="final-analysis-chart-actions">
@@ -539,7 +548,9 @@ export class DataTableView {
   }
 
   wire(container, onChange) {
-    container.querySelectorAll("[data-table-sort]").forEach(th => {
+    const scope = this._scopeId ? container.querySelector(`[data-table-scope="${this._scopeId}"]`) : container;
+    if (!scope) return;
+    scope.querySelectorAll("[data-table-sort]").forEach(th => {
       th.addEventListener("click", () => {
         const col = Number(th.dataset.tableSort);
         if (this._sortCol === col) this._sortDir *= -1;
@@ -547,7 +558,7 @@ export class DataTableView {
         onChange();
       });
     });
-    const search = container.querySelector(".final-analysis-datatable-search");
+    const search = scope.querySelector(".final-analysis-datatable-search");
     if (search) {
       search.addEventListener("input", () => {
         this._query = search.value;
@@ -561,16 +572,16 @@ export class DataTableView {
         search.setSelectionRange(pos, pos);
       }
     }
-    const copyBtn = container.querySelector("[data-table-copy]");
+    const copyBtn = scope.querySelector("[data-table-copy]");
     if (copyBtn) copyBtn.addEventListener("click", async () => {
-      const tableEl = container.querySelector("[data-table-el]");
+      const tableEl = scope.querySelector("[data-table-el]");
       const ok = await copyTableToClipboard(tableEl);
       const original = copyBtn.textContent;
       copyBtn.disabled = true;
       copyBtn.textContent = ok ? "已複製！" : "複製失敗";
       setTimeout(() => { copyBtn.textContent = original; copyBtn.disabled = false; }, 1500);
     });
-    const csvBtn = container.querySelector("[data-table-export-csv]");
+    const csvBtn = scope.querySelector("[data-table-export-csv]");
     if (csvBtn) csvBtn.addEventListener("click", () => {
       downloadCsv([this._headers, ...this._visibleRows()], this._filenameBase || "table");
     });

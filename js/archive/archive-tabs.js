@@ -12,6 +12,9 @@ import { onQuestionnaireActivate } from "./archive-questionnaire.js";
   var sidebarAutoCollapsed = false;
   var LAST_TAB_KEY = "archive_active_tab";
   var VALID_TABS = ["viewer", "quick-remark", "assist-mark", "match-mark", "final-analysis", "questionnaire"];
+  // 日誌檢視／輔助標記暫時隱藏（同簡易標記），還原後把對應 tab 從這裡移除即可
+  var HIDDEN_TABS = ["viewer", "quick-remark", "assist-mark"];
+  var DEFAULT_TAB = "match-mark";
 
   function getSidebar() { return document.getElementById("archiveLeftPanel"); }
   function getIcon()    { return document.getElementById("panelToggleIcon"); }
@@ -91,17 +94,16 @@ import { onQuestionnaireActivate } from "./archive-questionnaire.js";
   // 重新整理頁面時回到上次離開的分頁，而不是每次都跳回「日誌檢視」
   var lastTab = null;
   try { lastTab = localStorage.getItem(LAST_TAB_KEY); } catch { /* 不可用時忽略 */ }
-  if (lastTab && lastTab !== "viewer" && VALID_TABS.indexOf(lastTab) !== -1) {
-    activateTab(lastTab, { silent: true });
-  } else {
-    lastTab = "viewer";
+  if (!lastTab || HIDDEN_TABS.indexOf(lastTab) !== -1 || VALID_TABS.indexOf(lastTab) === -1) {
+    lastTab = DEFAULT_TAB;
   }
+  activateTab(lastTab, { silent: true });
   // 把目前這筆歷史紀錄標記上目前分頁，讓「上一頁」先在分頁之間走，走完才離開這個頁面
   try { history.replaceState({ archiveTab: lastTab }, "", location.href); } catch { /* 不可用時忽略 */ }
 
   window.addEventListener("popstate", function (e) {
     var tab = e.state && e.state.archiveTab;
-    if (tab && VALID_TABS.indexOf(tab) !== -1) {
+    if (tab && HIDDEN_TABS.indexOf(tab) === -1 && VALID_TABS.indexOf(tab) !== -1) {
       activateTab(tab, { silent: true });
     }
   });

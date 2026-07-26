@@ -36,3 +36,9 @@ export async function getParticipantNameMap() {
   const participants = await getParticipants();
   return new Map(participants.map(p => [p.trackingId, p.name || ""]));
 }
+
+// 性別／國籍只給「最終分析」分頁用（篩選、匯出），姓名仍照舊各自用 getParticipantNameMap 查
+export async function getParticipantInfoMap() {
+  const participants = await getParticipants();
+  return new Map(participants.map(p => [p.trackingId, { gender: p.gender || "", nationality: p.nationality || "" }]));
+}

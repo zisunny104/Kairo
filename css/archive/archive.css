@@ -782,16 +782,38 @@ body.archive-page {
   background: #f0f1fa;
   border-radius: 4px;
   padding: 2px 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
+/* 缺花費時間要一眼就看出來，跟其他一般膠囊拉開差距，不是只有淡淡換色而已 */
 .match-mark-assist-item.is-warn {
   background: #fdecd8;
   color: #b8590a;
+  border: 1.5px solid #e08a3c;
+  font-weight: 600;
 }
 
 .match-mark-assist-time {
   font-variant-numeric: tabular-nums;
   opacity: 0.85;
+}
+
+.match-mark-assist-delete {
+  border: none;
+  background: transparent;
+  color: inherit;
+  opacity: 0.55;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.match-mark-assist-delete:hover {
+  opacity: 1;
+  color: #c0392b;
 }
 
 .match-mark-row-body {
@@ -1202,7 +1224,6 @@ body.archive-page {
 
 .final-analysis-card-scope {
   flex: 0 0 220px;
-  max-height: 360px;
   overflow-y: auto;
   border: 1.5px solid #eceefa;
   border-radius: 8px;
@@ -1225,6 +1246,14 @@ body.archive-page {
 .final-analysis-scope-group-title {
   flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-weight: 700;
+  color: #7d3c98;
+  font-size: 13px;
+  cursor: pointer;
 }
 
 .final-analysis-scope-group-toggle {
@@ -1254,16 +1283,6 @@ body.archive-page {
   display: none;
 }
 
-.final-analysis-scope-group-title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 700;
-  color: #7d3c98;
-  font-size: 13px;
-  cursor: pointer;
-}
-
 .final-analysis-scope-items {
   margin-top: 6px;
   display: flex;
@@ -1287,8 +1306,6 @@ body.archive-page {
 }
 
 .final-analysis-scope-items--scroll {
-  max-height: 140px;
-  overflow-y: auto;
   padding-right: 4px;
 }
 
@@ -1309,6 +1326,10 @@ body.archive-page {
   border: 1.5px solid #dde0f3;
   border-radius: 6px;
   background: #fff;
+}
+
+.final-analysis-threshold-input {
+  max-width: 120px;
 }
 
 .final-analysis-agreement-summary {
@@ -1339,7 +1360,7 @@ body.archive-page {
 .final-analysis-card-content {
   min-height: 0;
   overflow-y: auto;
-  max-height: 420px;
+  max-height: clamp(420px, 45vh, 900px);
 }
 
 .final-analysis-series-block + .final-analysis-series-block {
@@ -4894,7 +4915,7 @@ body.archive-page {
 }
 
 .qnr-mapping-table-wrap {
-  max-height: 360px;
+  max-height: clamp(360px, 40vh, 760px);
   overflow-y: auto;
   border: 1px solid #eee;
   border-radius: 6px;

@@ -6,18 +6,18 @@
 import { getApiUrl } from "../core/url-utils.js";
 import { getAdminToken, clearAdminToken } from "../core/admin-auth.js";
 import { API_ENDPOINTS } from "../constants/index.js";
-import { downloadXlsx, downloadCsv } from "../core/xlsx-export.js";
+import { downloadXlsx, downloadCsv, downloadXlsxMultiSheet } from "../core/xlsx-export.js";
 import {
   escapeHtml, showToast, parseJsonResponse,
   renderActionsCollapseBtn, loadCollapsedPref, saveCollapsedPref,
 } from "./archive-constants.js";
-import { getParticipants, getParticipantNameMap } from "./archive-roster.js";
+import { getParticipants, getParticipantNameMap, getParticipantInfoMap } from "./archive-roster.js";
 import { GestureAgreementCard, ErrorRateComparisonCard, ReactionTimeCard } from "./archive-final-analysis-cards.js";
 import { parseClockMs, formatSecondsMs } from "./archive-assist-mark.js";
 
 const ACTIONS_COLLAPSED_KEY = "archive_final_analysis_actions_collapsed_v1";
 const STAGE_LABELS = { "1": "第一階段", "2-1": "第二階段（第一次）", "2-2": "第二階段（第二次）" };
-const ROW_HEADERS = ["idx", "id", "experiment_id", "participant_name", "gesture_command", "type", "type_raw", "note", "花費時間"];
+const ROW_HEADERS = ["idx", "id", "experiment_id", "participant_name", "性別", "國籍", "gesture_command", "type", "type_raw", "note", "花費時間"];
 
 class FinalAnalysisManager {
   constructor() {
@@ -70,6 +70,7 @@ class FinalAnalysisManager {
     const withAttempts = records.filter(r => r.attempts?.length);
     // 受試者姓名一律用 trackingId 去名單（participants.json）查，不從分析紀錄裡讀，避免到處存重複的值
     const nameMap = await getParticipantNameMap();
+    const infoMap = await getParticipantInfoMap();
 
     // idx：這個檔案（該階段）所有列的總序列，從 1 連續編號到底，不因人／實驗切段重來。
     // 之後不管在 Excel 或分析時怎麼篩選、排序，都能靠 idx 還原原始順序，
@@ -78,9 +79,10 @@ class FinalAnalysisManager {
     let idx = 0;
     for (const r of withAttempts) {
       const name = nameMap.get(r.trackingId) || "";
+      const info = infoMap.get(r.trackingId) || {};
       r.attempts.forEach(a => {
         idx += 1;
-        rows.push([idx, r.trackingId, r.experimentId, name, a.gestureCommand || "", a.type || "", a.typeRaw || "", a.note || "", formatSecondsMs(parseClockMs(a.duration))]);
+        rows.push([idx, r.trackingId, r.experimentId, name, info.gender || "", info.nationality || "", a.gestureCommand || "", a.type || "", a.typeRaw || "", a.note || "", formatSecondsMs(parseClockMs(a.duration))]);
       });
     }
     return { rows, count: withAttempts.length };
@@ -123,6 +125,29 @@ class FinalAnalysisManager {
     else downloadXlsx(this._previewRows, filename, STAGE_LABELS[this._previewStage]);
   }
 
+  // 三個實驗階段合併成同一個 Excel 檔案、各自一個分頁，方便跨階段比對分析，不用再切三個檔案。
+  async _downloadAllStages() {
+    if (this._loading) return;
+    this._loading = true;
+    this._render();
+    try {
+      const sheets = [];
+      for (const stage of ["1", "2-1", "2-2"]) {
+        const { rows, count } = await this._buildStageRows(stage);
+        if (count) sheets.push({ name: STAGE_LABELS[stage], rows });
+      }
+      if (!sheets.length) {
+        showToast("目前還沒有任何階段的資料，請先到「比對名單」分頁完成比對，並按下「全部儲存」。", "warning", 6000);
+      } else {
+        downloadXlsxMultiSheet(sheets, "final_analysis_all_stages");
+      }
+    } catch (err) {
+      showToast(`匯出失敗：${err.message || err}`, "error");
+    }
+    this._loading = false;
+    this._render();
+  }
+
   _render() {
     if (!this._container) return;
     const hasPreview = !!this._previewRows;
@@ -161,6 +186,7 @@ class FinalAnalysisManager {
             <button class="archive-action-btn${isPreviewMode && this._previewStage === "2-2" ? " is-active" : ""}" data-final-preview="2-2" ${this._loading ? "disabled" : ""}>預覽第二階段（第二次）</button>
             <button class="archive-action-btn" data-final-download="csv" ${isPreviewMode && hasPreview ? "" : "disabled"}>下載 CSV</button>
             <button class="archive-action-btn" data-final-download="xlsx" ${isPreviewMode && hasPreview ? "" : "disabled"}>下載 Excel</button>
+            <button class="archive-action-btn" data-final-download-all ${this._loading ? "disabled" : ""}>下載全部三階段（Excel，各階段一個分頁）</button>
           </div>
         </div>
       </div>
@@ -181,6 +207,7 @@ class FinalAnalysisManager {
     this._container.querySelectorAll("[data-final-download]").forEach(btn => {
       btn.addEventListener("click", () => this._downloadCurrent(btn.dataset.finalDownload));
     });
+    this._container.querySelector("[data-final-download-all]")?.addEventListener("click", () => this._downloadAllStages());
 
     if (!isPreviewMode) {
       this._cards.forEach((card, i) => {

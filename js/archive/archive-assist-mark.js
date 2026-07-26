@@ -709,7 +709,8 @@ class AssistMarkManager {
               <button class="archive-action-btn" data-assist-action="file">選擇檔案</button>
               <button class="archive-action-btn" data-assist-action="export-csv" ${hasData ? "" : "disabled"}>下載 CSV</button>
               <button class="archive-action-btn" data-assist-action="export-xlsx" ${hasData ? "" : "disabled"}>下載 Excel</button>
-              <button class="archive-action-btn archive-action-btn--danger" data-assist-action="reset" ${hasData ? "" : "disabled"}>清空</button>
+              <!-- 「清空」按鈕暫時隱藏（短期不會用到整批清空，只會單項修改／替換），reset 處理邏輯保留以便之後要恢復 -->
+              ${false ? `<button class="archive-action-btn archive-action-btn--danger" data-assist-action="reset" ${hasData ? "" : "disabled"}>清空</button>` : ""}
             </div>
           </div>
         </div>

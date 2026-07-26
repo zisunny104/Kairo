@@ -170,7 +170,7 @@ export function discoverAgreementKeys(attempts) {
   return Array.from(keys).sort();
 }
 
-export function computeAgreement(attempts, keyField) {
+export function computeAgreement(attempts, keyField, commandOrder) {
   const byReferent = new Map();
   for (const a of attempts) {
     const command = a.gestureCommand || "（未知指令）";
@@ -202,8 +202,7 @@ export function computeAgreement(attempts, keyField) {
       .sort((x, y) => x.trackingId.localeCompare(y.trackingId, "zh-Hant", { numeric: true }));
     rows.push({ command, ar, n, groups, sources });
   }
-  rows.sort((a, b) => a.command.localeCompare(b.command, "zh-Hant"));
-  return rows;
+  return sortByCommandOrder(rows, commandOrder, r => r.command);
 }
 
 // ── 錯誤率（g_type: t=成功；其餘（f=失敗、n=未判斷…）一律算不正確）────────
@@ -212,6 +211,39 @@ export function errorRateCounts(attempts) {
   const correct = attempts.reduce((n, a) => n + (a.typeRaw === "t" ? 1 : 0), 0);
   const wrong = total - correct;
   return { correct, wrong, total, errorRate: total ? wrong / total : null };
+}
+
+// ── 依手勢指令分組（「總」之外的「個別」細項共用）─────────────────────────
+// commandOrder：Map(gesture_id -> 順序索引)，由呼叫端傳入（來自 scenarios.json 的 gesture_list，
+// 即機台鍵盤 0~9 的操作順序）；沒有傳入或指令不在表裡則排在最後、彼此間退回字母排序。
+export function sortByCommandOrder(items, commandOrder, getCommand) {
+  const order = commandOrder || new Map();
+  return [...items].sort((a, b) => {
+    const ca = getCommand(a), cb = getCommand(b);
+    const ia = order.has(ca) ? order.get(ca) : Infinity;
+    const ib = order.has(cb) ? order.get(cb) : Infinity;
+    if (ia !== ib) return ia - ib;
+    return ca.localeCompare(cb, "zh-Hant");
+  });
+}
+
+export function groupByCommand(attempts, commandOrder) {
+  const byCmd = new Map();
+  for (const a of attempts) {
+    const command = a.gestureCommand || "（未知指令）";
+    if (!byCmd.has(command)) byCmd.set(command, []);
+    byCmd.get(command).push(a);
+  }
+  const rows = Array.from(byCmd.entries()).map(([command, items]) => ({ command, attempts: items }));
+  return sortByCommandOrder(rows, commandOrder, r => r.command);
+}
+
+// ── 超過門檻秒數的次數（花費時間用；durationsMs 為呼叫端已解析好的毫秒數陣列，
+//    門檻預設由呼叫端取中位數，較不受極端值影響）─────────────────────────
+export function countAboveThreshold(durationsMs, thresholdMs) {
+  const total = durationsMs.length;
+  const count = thresholdMs == null ? 0 : durationsMs.reduce((n, ms) => n + (ms > thresholdMs ? 1 : 0), 0);
+  return { count, total, pct: total ? count / total : null };
 }
 
 // ── 卡方檢定：R×C 列聯表 ──────────────────────────────────────────────────
@@ -303,6 +335,59 @@ export function wilcoxonSignedRank(diffs) {
   const z = (Math.abs(wPlus - meanW) - 0.5) / sigma;
   const p = Math.min(1, Math.max(0, 2 * (1 - normalCDF(z))));
   return { W: wPlus, z, p, n, note: n < 10 ? "樣本數較小，常態近似準確度較低" : "" };
+}
+
+// ── 獨立樣本 t 檢定（Welch's t-test，不假設變異數相等）───────────────────
+// 用於「不同受試者」的兩組比較（例如性別），跟上面配對 t 檢定（同一受試者兩個條件）不同，
+// 不能用差值配對，要各自算兩組的平均、變異數再比較。
+export function independentTTest(groupA, groupB) {
+  const nA = groupA.length, nB = groupB.length;
+  if (nA < 2 || nB < 2) return { t: null, df: 0, p: null, meanA: nA ? mean(groupA) : null, meanB: nB ? mean(groupB) : null, nA, nB, reason: "兩組樣本數都需至少 2 筆才能計算" };
+  const meanA = mean(groupA), meanB = mean(groupB);
+  const sdA = stddev(groupA), sdB = stddev(groupB);
+  const varA = (sdA || 0) ** 2, varB = (sdB || 0) ** 2;
+  if (!varA && !varB) {
+    return { t: null, df: nA + nB - 2, p: meanA === meanB ? 1 : 0, meanA, meanB, sdA: 0, sdB: 0, nA, nB, reason: meanA === meanB ? "兩組數值皆相同（變異數為 0）" : "兩組變異數皆為 0 但平均值不同" };
+  }
+  const se2 = varA / nA + varB / nB;
+  const t = (meanA - meanB) / Math.sqrt(se2);
+  const df = se2 ** 2 / (((varA / nA) ** 2) / (nA - 1) + ((varB / nB) ** 2) / (nB - 1));
+  return { t, df, p: tDistTwoTailedP(t, df), meanA, meanB, sdA, sdB, nA, nB };
+}
+
+// ── Mann-Whitney U 檢定（獨立樣本秩和檢定，常態近似，含連續性校正 + 同分等級校正）──
+// 與 Wilcoxon Signed-Rank 對應：同樣是無母數方法，但用在「不同受試者」的兩組獨立樣本，不是配對差值。
+export function mannWhitneyU(groupA, groupB) {
+  const nA = groupA.length, nB = groupB.length;
+  if (!nA || !nB) return { U: null, z: null, p: null, nA, nB, reason: "兩組都需至少 1 筆資料才能計算" };
+  const tagged = [...groupA.map(v => ({ v, g: "A" })), ...groupB.map(v => ({ v, g: "B" }))];
+  const n = tagged.length;
+  const order = tagged.map((_, i) => i).sort((i, j) => tagged[i].v - tagged[j].v);
+  const ranks = new Array(n);
+  const tieSizes = [];
+  let i = 0;
+  while (i < n) {
+    let j = i;
+    while (j + 1 < n && tagged[order[j + 1]].v === tagged[order[i]].v) j++;
+    const avgRank = (i + 1 + j + 1) / 2;
+    for (let k = i; k <= j; k++) ranks[order[k]] = avgRank;
+    tieSizes.push(j - i + 1);
+    i = j + 1;
+  }
+  let rA = 0;
+  tagged.forEach((item, idx) => { if (item.g === "A") rA += ranks[idx]; });
+  const uA = rA - (nA * (nA + 1)) / 2;
+  const uB = nA * nB - uA;
+  const U = Math.min(uA, uB);
+  const meanU = (nA * nB) / 2;
+  let tieCorrection = 0;
+  for (const t of tieSizes) tieCorrection += t ** 3 - t;
+  const varU = (nA * nB / 12) * ((n + 1) - tieCorrection / (n * (n - 1)));
+  if (varU <= 0) return { U, z: null, p: null, nA, nB, reason: "變異數為 0，無法計算 z 值" };
+  const sigma = Math.sqrt(varU);
+  const z = (Math.abs(uA - meanU) - 0.5) / sigma;
+  const p = Math.min(1, Math.max(0, 2 * (1 - normalCDF(z))));
+  return { U, z, p, nA, nB, note: (nA < 10 || nB < 10) ? "樣本數較小，常態近似準確度較低" : "" };
 }
 
 // ── 單因子重複量數 ANOVA（Subject × Condition，SS 拆解法）────────────────
