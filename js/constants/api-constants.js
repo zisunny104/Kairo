@@ -51,6 +51,9 @@ export const API_ENDPOINTS = {
   ASSIST_MARK: {
     DRAFT: "/assist-mark/draft",
   },
+  MATCH_MARK: {
+    DRAFT: "/match-mark/draft",
+  },
   QUESTIONNAIRE: {
     DRAFT: "/questionnaire/draft",
   },

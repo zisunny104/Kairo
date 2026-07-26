@@ -212,8 +212,8 @@ class QuestionnaireManager {
     const { headers, dataRows } = this._state;
     if (!headers.length || !dataRows.length) return;
     const rows = [headers, ...dataRows];
-    if (type === "xlsx") downloadXlsx(rows, `questionnaire_raw_${nowStamp()}`, "原始資料");
-    else downloadCsv(rows, `questionnaire_raw_${nowStamp()}`);
+    if (type === "xlsx") downloadXlsx(rows, "questionnaire_raw", "原始資料");
+    else downloadCsv(rows, "questionnaire_raw");
   }
 
   _resetAll() {

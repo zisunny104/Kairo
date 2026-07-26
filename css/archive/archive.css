@@ -554,6 +554,49 @@ body.archive-page {
   background: #fdecd8;
 }
 
+.match-mark-stat-chip--jump {
+  position: relative;
+  padding: 0;
+}
+
+.match-mark-stat-chip--jump select {
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  padding: 4px 20px 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.match-mark-stat-chip--jump select:disabled {
+  cursor: default;
+  opacity: .7;
+}
+
+.match-mark-stat-chip--jump::after {
+  content: "▾";
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 9px;
+  opacity: .6;
+  pointer-events: none;
+}
+
+.match-mark-row.is-jump-highlight {
+  animation: match-mark-jump-flash 1.5s ease-out;
+}
+
+@keyframes match-mark-jump-flash {
+  0% { box-shadow: 0 0 0 3px rgba(74, 100, 216, .55); }
+  100% { box-shadow: 0 0 0 3px rgba(74, 100, 216, 0); }
+}
+
 .match-mark-hidden-hint {
   font-size: 12px;
   color: #6a6e8f;

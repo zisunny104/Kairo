@@ -15,6 +15,19 @@ function downloadBlob(blob, filename) {
   URL.revokeObjectURL(url);
 }
 
+function nowStamp() {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+
+// 統一在這裡加時間戳，呼叫端不用各自記得處理——同一個檔名重複下載（例如同一個表格連續匯出
+// 兩次）不會彼此覆蓋或被瀏覽器自動改名成看不出差異的 (1)、(2)。
+function withTimestamp(filename, ext) {
+  const base = filename.endsWith(ext) ? filename.slice(0, -ext.length) : filename;
+  return `${base}_${nowStamp()}${ext}`;
+}
+
 /** rows：二維陣列，第一列視為表頭。sheetName 僅用於 Excel。 */
 export function downloadXlsx(rows, filename, sheetName = "Sheet1") {
   if (!rows.length) return;
@@ -23,7 +36,7 @@ export function downloadXlsx(rows, filename, sheetName = "Sheet1") {
   XLSX.utils.book_append_sheet(book, sheet, sheetName);
   const data = XLSX.write(book, { bookType: "xlsx", type: "array" });
   const blob = new Blob([data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-  downloadBlob(blob, filename.endsWith(".xlsx") ? filename : `${filename}.xlsx`);
+  downloadBlob(blob, withTimestamp(filename, ".xlsx"));
 }
 
 export function downloadCsv(rows, filename) {
@@ -35,5 +48,5 @@ export function downloadCsv(rows, filename) {
   };
   const text = rows.map(row => row.map(escapeCsv).join(",")).join("\n") + "\n";
   const blob = new Blob([text], { type: "text/csv;charset=utf-8" });
-  downloadBlob(blob, filename.endsWith(".csv") ? filename : `${filename}.csv`);
+  downloadBlob(blob, withTimestamp(filename, ".csv"));
 }

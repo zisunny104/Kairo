@@ -27,10 +27,21 @@ export function svgToDownloadUrl(svgEl) {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(source)}`;
 }
 
+function nowStamp() {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+
+// 檔名一律加時間戳，避免同一張圖連續匯出兩次時彼此覆蓋或被瀏覽器自動改名成看不出差異的 (1)、(2)。
 export function triggerDownload(href, filename) {
+  const dot = filename.lastIndexOf(".");
+  const stamped = dot >= 0
+    ? `${filename.slice(0, dot)}_${nowStamp()}${filename.slice(dot)}`
+    : `${filename}_${nowStamp()}`;
   const a = document.createElement("a");
   a.href = href;
-  a.download = filename;
+  a.download = stamped;
   document.body.appendChild(a);
   a.click();
   a.remove();

@@ -7,6 +7,12 @@ import { UIPopover } from "../ui/popover.js";
 import { API_ENDPOINTS } from "../constants/index.js";
 import { ArchiveFileState, parseJsonl, escapeHtml, stripColorTags, showToast, parseJsonResponse } from "./archive-constants.js";
 
+function nowStamp() {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+
 export const archiveSidebarMethods = {
 
   // ── 參考資料（手勢／步驟名稱）─────────────────────────────────────────────
@@ -553,9 +559,11 @@ export const archiveSidebarMethods = {
     if (!state) return;
     const orig = state.title;
     const dot  = orig.lastIndexOf(".");
+    // 加時間戳，同一個原始檔案編輯存檔多次也不會撞名（伺服器端 wx 寫入本來就拒絕覆蓋既有檔）。
+    const suffix = `_edited_${nowStamp()}`;
     const newName = dot >= 0
-      ? orig.slice(0, dot) + "_edited" + orig.slice(dot)
-      : orig + "_edited";
+      ? orig.slice(0, dot) + suffix + orig.slice(dot)
+      : orig + suffix;
 
     if (state.source === "local") {
       const blob = new Blob([state.toEditedJsonl()], { type: "application/x-ndjson" });

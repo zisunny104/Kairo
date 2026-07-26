@@ -182,6 +182,7 @@ class MatchMarkManager {
   constructor() {
     this._container = null;
     this._state = this._loadDraft() || createDefaultState();
+    this._saveTimer = null;
     this._serverFiles = [];
     this._serverFilesLoaded = false;
     this._candidateCache = new Map(); // filename -> { entries, summary }
@@ -202,10 +203,26 @@ class MatchMarkManager {
   async init(container) {
     this._container = container;
     this._render();
+    // 先等伺服器草稿同步完成再繼續，避免在同步的空檔誤動到即將被伺服器版本蓋掉的本機資料
+    await this._loadFromServer();
+    this._bindFlushOnLeave();
     const tasks = [this._ensureParticipantIndex().then(() => this._applyParticipantIndexToAllRows())];
     if (!this._serverFilesLoaded) tasks.push(this._loadServerFiles());
     await Promise.all(tasks);
     this._render();
+  }
+
+  // 分頁被切走／關閉前，把還在 debounce 排隊中的儲存立刻送出，
+  // 避免「操作完成→馬上切頁或重新整理」時，最後一筆還沒送到伺服器就被下次讀取的舊草稿蓋掉。
+  _bindFlushOnLeave() {
+    const flush = () => {
+      if (!this._saveTimer) return;
+      clearTimeout(this._saveTimer);
+      this._saveTimer = null;
+      this._pushToServer({ keepalive: true });
+    };
+    document.addEventListener("visibilitychange", () => { if (document.hidden) flush(); });
+    window.addEventListener("pagehide", flush);
   }
 
   // 建立「實驗代碼 → 受試者ID／姓名」對照表（來自已存名單），只抓一次、快取起來，
@@ -287,7 +304,52 @@ class MatchMarkManager {
     } catch { return null; }
   }
 
+  // 開啟時向伺服器要目前共用的草稿並蓋掉本機暫存，這樣不同裝置／不同分頁打開時看到的進度一致，
+  // 不會像純 localStorage 那樣各自為政、互相覆蓋。讀取失敗（離線等）時維持目前本機草稿即可。
+  // 但如果本機草稿的 lastSavedAt 比伺服器新（例如剛存完一筆、debounce 還沒送出就重新整理），
+  // 代表伺服器那份還是舊的，此時不能覆蓋本機，反而要把本機這份補送上去，否則剛做的標記會憑空消失。
+  async _loadFromServer() {
+    try {
+      const res = await this._authedFetch(`${getApiUrl()}${API_ENDPOINTS.MATCH_MARK.DRAFT}`);
+      const data = await parseJsonResponse(res);
+      if (!data.success || !data.draft) return;
+      if ((this._state.lastSavedAt || 0) > (data.draft.lastSavedAt || 0)) {
+        this._pushToServer();
+        return;
+      }
+      this._state = data.draft;
+      this._saveLocalDraft();
+      this._render();
+    } catch {
+      // 讀取失敗時維持目前（本機）草稿，使用者仍可照常操作
+    }
+  }
+
+  // 把目前草稿同步到伺服器，debounce 避免每個小動作都送出請求
+  _scheduleServerSync() {
+    if (this._saveTimer) clearTimeout(this._saveTimer);
+    this._saveTimer = setTimeout(() => this._pushToServer(), 800);
+  }
+
+  async _pushToServer({ keepalive = false } = {}) {
+    try {
+      await this._authedFetch(`${getApiUrl()}${API_ENDPOINTS.MATCH_MARK.DRAFT}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(this._state),
+        keepalive,
+      });
+    } catch {
+      // 同步失敗不中斷編輯，本機仍保留最新內容，下次異動會再次觸發同步
+    }
+  }
+
   _saveDraft() {
+    this._saveLocalDraft();
+    this._scheduleServerSync();
+  }
+
+  _saveLocalDraft() {
     try {
       localStorage.setItem(DRAFT_KEY, JSON.stringify(this._state));
       this._state.lastSavedAt = Date.now();
@@ -427,7 +489,10 @@ class MatchMarkManager {
     let totalRows = 0;
     const kept = []; // { label, existingDurationCount, incomingDurationCount }
     const overwroteLogSource = []; // 原本靠日誌檔確認過、這次被輔助標記資料蓋過去的受試者，只提醒不阻擋
-    for (const row of this._state.rows) {
+    const updatedRowIdx = []; // 這次匯入實際讓內容產生變化（新增/修改花費時間等）的列，供畫面上定位、高亮
+    const filledIn = []; // { label, count } 這次比對到「新填入的花費時間」筆數，讓使用者能看出具體是哪些人補上了時間
+    for (let idx = 0; idx < this._state.rows.length; idx++) {
+      const row = this._state.rows[idx];
       const expId = String(row.idRaw || "").trim().toLowerCase();
       if (!expId) continue;
       const tId = row.trackingId != null && trackingIdCol >= 0 ? String(row.trackingId).trim().toLowerCase() : "";
@@ -436,20 +501,29 @@ class MatchMarkManager {
       // 對應到名單後，姓名一律改用名單資料（row.participantName）為準，
       // 不採用輔助標記貼上檔案裡逐列可能空白/打錯的姓名欄，確保同一人在同一份輸出裡姓名一致。
       const incoming = rows.map(r => ({ ...r, participantName: row.participantName || r.participantName }));
+      const label = row.participantName || row.idRaw || `受試者 ${row.trackingId}`;
       const existingDurationCount = (row.assistDataRows || []).filter(a => a.duration).length;
       const incomingDurationCount = incoming.filter(a => a.duration).length;
       // 這一列已經有資料、且這次比對到的花費時間筆數比目前少（例如輔助標記端本機資料遺失後
       // 又重新匯入一次），視為比較不完整的資料，不覆蓋目前這一列已有的計時結果，
       // 避免「重新匯入」把先前已經記錄成功的時間洗掉。
       if (row.assistDataRows?.length && incomingDurationCount < existingDurationCount) {
-        kept.push({ label: row.participantName || row.idRaw || `受試者 ${row.trackingId}`, existingDurationCount, incomingDurationCount });
+        kept.push({ label, existingDurationCount, incomingDurationCount });
         continue;
       }
       // 資料來源理論上唯一：這一列如果已經用日誌檔讀入確認過（matchedFilename），代表當初
       // 認定的來源是日誌檔，現在卻又要被輔助標記資料覆蓋——不擋流程，但要留下紀錄讓使用者
       // 事後能檢查是不是誤觸，避免同一筆資料的來源被無聲切換掉。
       if (row.matchedFilename && !row.assistDataRows?.length) {
-        overwroteLogSource.push(row.participantName || row.idRaw || `受試者 ${row.trackingId}`);
+        overwroteLogSource.push(label);
+      }
+      // 內容跟目前完全相同就不算「更新」，避免每次重新匯入都被算進「這次有變化」的清單，
+      // 讓使用者分不出這次到底真的補了什麼、還是資料本來就沒變。
+      const identical = JSON.stringify(row.assistDataRows || []) === JSON.stringify(incoming);
+      if (!identical) {
+        updatedRowIdx.push(idx);
+        const newlyFilled = incomingDurationCount - existingDurationCount;
+        if (newlyFilled > 0) filledIn.push({ label, count: newlyFilled });
       }
       row.assistDataRows = incoming;
       matched++;
@@ -457,6 +531,16 @@ class MatchMarkManager {
     }
     this._saveDraft();
     this._render();
+    if (updatedRowIdx.length) {
+      requestAnimationFrame(() => {
+        updatedRowIdx.forEach(idx => {
+          const el = this._container?.querySelector(`[data-row-idx="${idx}"]`);
+          if (!el) return;
+          el.classList.add("is-jump-highlight");
+          setTimeout(() => el.classList.remove("is-jump-highlight"), 1500);
+        });
+      });
+    }
     // 花費時間欄位沒被辨識到、或比對到的資料裡花費時間全是空白，都要明確提示，
     // 不要讓「有匯入」跟「有花費時間可用」被誤會成同一件事
     const durationWarning = durationCol < 0
@@ -472,7 +556,15 @@ class MatchMarkManager {
     const sourceWarning = overwroteLogSource.length > 0
       ? `\n⚠ 以下受試者原本是用日誌檔讀入確認的，這次改用輔助標記資料覆蓋，請確認是否為誤觸：\n${overwroteLogSource.map(l => `　${l}`).join("\n")}`
       : "";
-    showToast(`已從「輔助標記」匯入（依人員 ID ＋ 實驗 ID 比對），共比對到 ${matched} 位受試者、合計 ${totalRows} 列手勢紀錄。${durationWarning}${keptWarning}${sourceWarning}`, durationWarning || keptWarning || sourceWarning ? "warning" : "success", keptWarning || sourceWarning ? 15000 : 6000);
+    // 只列出「這次真的新填入花費時間」的人，讓使用者能明確看出補了誰的時間，
+    // 而不是每次都只看到一個總數、猜不出跟上次比對到底差在哪裡。
+    const filledWarning = filledIn.length > 0
+      ? `\n✅ 這次新填入花費時間：\n${filledIn.map(f => `　${f.label}：新增 ${f.count} 筆`).join("\n")}`
+      : "";
+    const noChangeNote = updatedRowIdx.length === 0 && matched > 0
+      ? "\nℹ 這次比對到的資料跟目前已有的完全相同，沒有任何欄位被更新。"
+      : "";
+    showToast(`已從「輔助標記」匯入（依人員 ID ＋ 實驗 ID 比對），共比對到 ${matched} 位受試者、合計 ${totalRows} 列手勢紀錄。${filledWarning}${noChangeNote}${durationWarning}${keptWarning}${sourceWarning}`, durationWarning || keptWarning || sourceWarning ? "warning" : "success", filledWarning || keptWarning || sourceWarning ? 15000 : 6000);
   }
 
   // 反向操作：把目前已比對好、且已有花費時間的 assistDataRows 回填進「輔助標記」目前已有的表格，
@@ -950,7 +1042,6 @@ class MatchMarkManager {
       row.matchedFilename = null;
       row.assistDataRows = null;
       row.saveConflict = null;
-      row.reopenedForRematch = false;
       row._savedSignature = null; // 伺服器紀錄已被刪除，強制視為未同步，之後重新比對存檔時一定會再送一次
       this._saveDraft();
       this._render();
@@ -1013,7 +1104,6 @@ class MatchMarkManager {
     // 「已讀入」直接看 matchedFilename 有沒有值，不再另外存一個 decision 狀態去追蹤——
     // 兩個值分開存很容易像先前那樣忘記同步（重新整理名單後看起來像退回「待確認」）。
     row.matchedFilename = primary;
-    row.reopenedForRematch = false;
     this._saveDraft();
     this._render();
     // 存檔完成後再 render 一次：翻譯日誌拿到逐筆時間需要等 fetch，缺時間提示要等這時候才看得到。
@@ -1034,27 +1124,26 @@ class MatchMarkManager {
   }
 
   // 「重新讀入」：在檢視分頁編輯並「另存新檔」後（原始檔不變、產生一個新檔名），
-  // 回來這一列重新抓伺服器檔案清單，讓新存的檔案進入候選名單，並預選其中最新的一個
-  // （精確比對候選按修改時間排序，剛存好的編輯檔一定最新），使用者確認無誤後
-  // 按「直接讀入已選候選」即可完成替換；若選錯也可以在展開的候選列表裡自行改選。
+  // 回來這一列重新抓伺服器檔案清單，找到新存的編輯檔就直接採用（精確比對候選按修改時間
+  // 排序，剛存好的編輯檔一定最新），不需要使用者再多按一次「直接讀入已選候選」確認——
+  // 若選錯，仍可在展開的候選列表裡自行改選其他候選再手動讀入。
+  // 找不到比目前 matchedFilename 更新的候選，就代表沒有新的編輯檔，原本讀入的那份沒有問題，
+  // 維持原樣即可，不需要進入任何「待確認」的中繼狀態。
   async _reopenForRematch(idx) {
     const row = this._state.rows[idx];
     if (!row) return;
-    // 保留原本的 matchedFilename 當參考，只用 reopenedForRematch 這個暫時旗標
-    // 讓這一列脫離「已完成」的收合／統計，選好新候選按下讀入後就會自動清除。
-    row.reopenedForRematch = true;
     this._expanded.add(idx);
-    this._saveDraft();
-    this._render();
     await this._loadServerFiles();
     const refreshed = this._state.rows[idx];
-    if (refreshed?.candidates?.length) {
-      const exactCandidates = refreshed.candidates.filter(c => c.exact);
-      const latest = (exactCandidates.length ? exactCandidates : refreshed.candidates).slice(-1)[0];
-      if (latest) refreshed.selectedFilenames = [latest.filename];
-    }
+    if (!refreshed?.candidates?.length) return;
+    const exactCandidates = refreshed.candidates.filter(c => c.exact);
+    const latest = (exactCandidates.length ? exactCandidates : refreshed.candidates).slice(-1)[0];
+    if (!latest || latest.filename === refreshed.matchedFilename) return;
+    refreshed.selectedFilenames = [latest.filename];
+    refreshed.matchedFilename = latest.filename;
     this._saveDraft();
     this._render();
+    this._saveAnalysisFile(refreshed).then(() => this._render());
   }
 
   // 自動比對找不到某個人要的檔案時，讓使用者直接把還在自己電腦裡、還沒上傳的 .jsonl
@@ -1100,7 +1189,6 @@ class MatchMarkManager {
     const row = this._state.rows[idx];
     if (!row || row.selectedFilenames.length !== 1) return;
     row.matchedFilename = row.selectedFilenames[0];
-    row.reopenedForRematch = false;
     this._saveDraft();
     this._render();
     // 存檔完成後再 render 一次：翻譯日誌拿到逐筆時間需要等 fetch，缺時間提示要等這時候才看得到。
@@ -1147,6 +1235,7 @@ class MatchMarkManager {
     this._previewOpen.clear();
     this._previewLoading.clear();
     try { localStorage.removeItem(DRAFT_KEY); } catch { /* noop */ }
+    this._scheduleServerSync(); // 把清空後的狀態同步上去，避免其他裝置／分頁之後又把舊草稿蓋回來
     this._render();
   }
 
@@ -1217,25 +1306,69 @@ class MatchMarkManager {
     </div>`;
   }
 
+  // 每一列在跳轉選單裡顯示的名稱，跟列表頭上顯示的名稱同一套，方便對照
+  _rowJumpLabel(row) {
+    return row.groupLabel ? row.groupLabel
+      : row.participantName ? `${row.participantName}（${row.idRaw || ""}）`
+      : (row.idRaw || "（未填）");
+  }
+
   _renderStats() {
     const rows = this._state.rows;
     if (!rows.length) return "";
-    // 跟每一列的徽章（_renderRow 的 decisionLabel）用同一套優先順序：已讀入／重新確認中
+    // 跟每一列的徽章（_renderRow 的 decisionLabel）用同一套優先順序：已讀入優先，
     // 不看 decision 欄位，其餘才照 decision 分類，這樣四個分類彼此互斥，加總才會等於總筆數，
     // 不會像之前那樣「已讀入」的列因為 decision 欄位還停在預設的 pending，同時被算進「待確認」。
-    const completed = rows.filter(r => this._isRowCompleted(r)).length;
-    const reopening = rows.filter(r => !this._isRowCompleted(r) && r.reopenedForRematch).length;
-    const remaining = rows.filter(r => !this._isRowCompleted(r) && !r.reopenedForRematch);
-    const needsRemark = remaining.filter(r => r.decision === "needs-remark" || (r.candidates.length === 0 && r.decision === "pending" && r.stage !== "1")).length;
-    const skipped = remaining.filter(r => r.decision === "skipped").length;
-    const pending = remaining.length - needsRemark - skipped;
+    const allIdx = [];
+    const pendingIdx = [];
+    const completedIdx = [];
+    const needsRemarkIdx = [];
+    const skippedIdx = [];
+    rows.forEach((r, idx) => {
+      allIdx.push(idx);
+      if (this._isRowCompleted(r)) { completedIdx.push(idx); return; }
+      const effective = this._effectiveDecision(r);
+      if (effective === "needs-remark") { needsRemarkIdx.push(idx); return; }
+      if (effective === "skipped") { skippedIdx.push(idx); return; }
+      pendingIdx.push(idx);
+    });
+    // 每個分類膠囊都做成下拉選單，選了哪一筆就直接捲到那一列，不用自己在長長的列表裡找。
+    const chip = (label, idxList, extraClass = "") => {
+      const options = idxList.map(idx => `<option value="${idx}">${escapeHtml(this._rowJumpLabel(rows[idx]))}</option>`).join("");
+      return `<span class="match-mark-stat-chip match-mark-stat-chip--jump${extraClass ? " " + extraClass : ""}">
+        <select data-match-jump-select ${idxList.length ? "" : "disabled"} title="跳到「${label}」裡的某一筆">
+          <option value="" selected disabled>${label} ${idxList.length}</option>
+          ${options}
+        </select>
+      </span>`;
+    };
     return `<div class="match-mark-stats${this._actionsCollapsed ? " is-collapsed" : ""}">
-      <span class="match-mark-stat-chip">共 ${rows.length} 筆</span>
-      <span class="match-mark-stat-chip">待確認 ${pending}</span>
-      <span class="match-mark-stat-chip match-mark-stat-chip--ok">已讀入 ${completed}</span>
-      <span class="match-mark-stat-chip match-mark-stat-chip--warn">建議重新標記 ${needsRemark}${reopening ? ` · 重新確認中 ${reopening}` : ""}</span>
-      <span class="match-mark-stat-chip">已略過 ${skipped}</span>
+      ${chip("共", allIdx)}
+      ${chip("待確認", pendingIdx)}
+      ${chip("已讀入", completedIdx, "match-mark-stat-chip--ok")}
+      ${chip("建議重新標記", needsRemarkIdx, "match-mark-stat-chip--warn")}
+      ${chip("已略過", skippedIdx)}
     </div>`;
+  }
+
+  // 分類膠囊下拉選了某一筆：跳到那一列並展開，若目前開著「僅顯示待處理」而目標剛好是
+  // 已完成的列，先關掉篩選，不然這一列根本沒被畫出來，捲了也捲不到。
+  _jumpToRow(idx) {
+    const row = this._state.rows[idx];
+    if (!row) return;
+    if (this._hideCompleted && this._isRowCompleted(row)) {
+      this._hideCompleted = false;
+      saveCollapsedPref(HIDE_COMPLETED_KEY, false);
+    }
+    this._expanded.add(idx);
+    this._render();
+    requestAnimationFrame(() => {
+      const el = this._container?.querySelector(`[data-row-idx="${idx}"]`);
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("is-jump-highlight");
+      setTimeout(() => el.classList.remove("is-jump-highlight"), 1500);
+    });
   }
 
   _renderMapping() {
@@ -1272,10 +1405,20 @@ class MatchMarkManager {
   // 兩者都是使用者主動觸發的讀入／匯入動作，等同已經確認過，不需要再另外標「待確認」。
   // 但如果已知內容裡有缺花費時間的筆數，代表資料還有問題要看，不能算完成——不然被「僅顯示
   // 待處理」篩掉之後，這種還沒修好的資料就整列消失、沒地方能再看到它。
-  // reopenedForRematch 是使用者主動按「重新讀入」時的暫時旗標，讓它先脫離「已完成」。
   _isRowCompleted(row) {
-    return (!!row.matchedFilename || !!row.assistDataRows?.length) && !row.reopenedForRematch
+    return (!!row.matchedFilename || !!row.assistDataRows?.length)
       && this._missingDurationCount(row) === 0;
+  }
+
+  // 「待確認／建議重新標記／已略過」的實際分類，統計列的下拉膠囊跟每一列自己的徽章要用同一套判斷，
+  // 否則會出現「建議重新標記 4」但點進去卻只看到「待確認」徽章的不一致情形。
+  // 沒有任何候選檔案、使用者也還沒手動處理過（decision 還是預設的 pending）的列，
+  // 代表這個實驗編號在伺服器上根本找不到對應的日誌檔，等同需要回去重新標記，因此視同「建議重新標記」。
+  _effectiveDecision(row) {
+    if (row.decision === "needs-remark") return "needs-remark";
+    if (row.decision === "skipped") return "skipped";
+    if (row.candidates.length === 0 && row.decision === "pending" && row.stage !== "1") return "needs-remark";
+    return "pending";
   }
 
   // 隱藏了幾筆「已完成」不用再另外寫一行提示——上面統計列的「已讀入」數字已經是同一個數字，
@@ -1296,12 +1439,11 @@ class MatchMarkManager {
     // 「已讀入」跟 _isRowCompleted 用同一套判斷（matchedFilename 或 assistDataRows），不看 decision——
     // decision 只用來記另外幾種跟檔案無關的人工標註（待確認／建議重新標記／已略過）。
     const rowCompleted = this._isRowCompleted(row);
-    const decisionLabel = row.reopenedForRematch ? "重新確認中"
-      : rowCompleted ? "已讀入"
-      : ({ pending: "待確認", "needs-remark": "建議重新標記", skipped: "已略過" }[row.decision] || row.decision);
-    const decisionClass = row.reopenedForRematch ? "is-warn"
-      : rowCompleted ? "is-ok"
-      : ({ pending: "", "needs-remark": "is-warn", skipped: "is-muted" }[row.decision] || "");
+    const effectiveDecision = this._effectiveDecision(row);
+    const decisionLabel = rowCompleted ? "已讀入"
+      : ({ pending: "待確認", "needs-remark": "建議重新標記", skipped: "已略過" }[effectiveDecision] || effectiveDecision);
+    const decisionClass = rowCompleted ? "is-ok"
+      : ({ pending: "", "needs-remark": "is-warn", skipped: "is-muted" }[effectiveDecision] || "");
 
     const noCandidates = row.candidates.length === 0;
     // 只算目前候選名單裡真的還在的隱藏檔名，避免候選規則調整後殘留的隱藏紀錄
@@ -1334,7 +1476,7 @@ class MatchMarkManager {
         <span class="match-mark-row-meta">${row.date ? escapeHtml(row.date) : "—"}${row.groupLabel ? " · 代碼 " + escapeHtml(row.idRaw) : ""}${!row.groupLabel && row.participantName ? " · 受試者 " + escapeHtml(String(row.trackingId ?? "")) : ""}${row.combo ? " · " + escapeHtml(row.combo) : ""}${row.count != null ? ` · 預期 ${row.count} 次` : ""}${row.matchedFilename ? ` · 已讀入 <span class="match-mark-matched-link" data-match-edit-matched="${idx}" title="在檢視分頁開啟這個日誌檔的「重新標記」編輯模式，確認內容有沒有異常；沒異常就直接關掉分頁即可，原檔案不受影響">${escapeHtml(row.matchedFilename)}</span>` : ""}</span>
         <span class="match-mark-row-cand-count">${row.stage === "1" && noCandidates ? "階段一無日誌檔（正常）" : candCountLabel}</span>
         <span class="match-mark-decision-badge ${decisionClass}">${decisionLabel}</span>
-        ${row.matchedFilename ? `<button class="archive-action-btn archive-action-btn--sm" data-match-reopen="${idx}" title="發現剛剛編輯後另存的異常修正檔，重新整理候選清單並預選最新的檔案，方便重新讀入">重新讀入</button>` : ""}
+        ${row.matchedFilename ? `<button class="archive-action-btn archive-action-btn--sm" data-match-reopen="${idx}" title="檢查是否有剛剛編輯後另存的異常修正檔，找到就直接採用最新的一份；沒有新檔案就維持原樣不變">重新讀入</button>` : ""}
         ${row.trackingId != null && row.stage ? `<button class="archive-action-btn archive-action-btn--sm archive-action-btn--danger" data-match-clear-saved="${idx}" title="刪除伺服器上這位受試者・這個階段已存的分析資料">清除已儲存資料</button>` : ""}
         <span class="match-mark-row-caret">${expanded ? "▾" : "▸"}</span>
       </div>
@@ -1413,7 +1555,7 @@ class MatchMarkManager {
         <p class="match-mark-empty-hint">${hint}</p>
         <div class="match-mark-row-actions">
           ${row.stage === "1" ? "" : `<button class="archive-action-btn" data-match-goto-remark="${idx}">標示需重新標記</button>`}
-          <button class="archive-action-btn archive-action-btn--secondary" data-match-skip="${idx}">略過此列</button>
+          <button class="archive-action-btn archive-action-btn--secondary" data-match-skip="${idx}" title="標記為「這一列先不處理」，之後想再回來的話可從上方「已略過」下拉找回，不會刪除或動到任何已存的資料">略過此列</button>
         </div>
       </div>`;
     }
@@ -1470,7 +1612,7 @@ class MatchMarkManager {
         <button class="archive-action-btn" data-match-accept="${idx}" ${canAccept ? "" : "disabled"} title="僅選取單一候選檔案時可用，直接採用該檔案作為比對結果，不進入重新標記工作區">直接讀入已選候選</button>
         <button class="archive-action-btn" data-match-open-remark="${idx}" ${canOpen ? "" : "disabled"}>在重新標記工作區開啟已選候選（合併）</button>
         <button class="archive-action-btn archive-action-btn--secondary" data-match-goto-remark="${idx}">標示需重新標記</button>
-        <button class="archive-action-btn archive-action-btn--secondary" data-match-skip="${idx}">略過此列</button>
+        <button class="archive-action-btn archive-action-btn--secondary" data-match-skip="${idx}" title="標記為「這一列先不處理」，之後想再回來的話可從上方「已略過」下拉找回，不會刪除或動到任何已存的資料">略過此列</button>
         ${hiddenToggle}
       </div>
     </div>`;
@@ -1517,7 +1659,7 @@ class MatchMarkManager {
           this._render();
         }
         if (action === "save-all") this._saveAllRows();
-        if (action === "reset") this._resetAll();
+        if (action === "reset" && confirm("確定要清空目前的比對名單與草稿嗎？此動作無法復原（已存檔的比對結果不受影響）。")) this._resetAll();
       });
     });
 
@@ -1554,6 +1696,13 @@ class MatchMarkManager {
 
     c.querySelectorAll("[data-match-toggle]").forEach(head =>
       head.addEventListener("click", () => this._toggleExpand(Number(head.dataset.matchToggle))));
+
+    c.querySelectorAll("[data-match-jump-select]").forEach(sel => {
+      sel.addEventListener("change", () => {
+        const idx = Number(sel.value);
+        if (!Number.isNaN(idx)) this._jumpToRow(idx);
+      });
+    });
 
     // 找不到自動比對出來的候選檔時，直接把本機的 .jsonl 拖到這個人整張卡片上（不只是標題列，
     // 展開後的候選清單／輔助標記摘要區也算），指定給他。card 層級攔截並 stopPropagation，
