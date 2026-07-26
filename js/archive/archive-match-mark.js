@@ -13,7 +13,7 @@ import {
   escapeHtml, parseJsonl, extractSummary, ArchiveFileState, showToast, parseJsonResponse,
   renderActionsCollapseBtn, loadCollapsedPref, saveCollapsedPref,
 } from "./archive-constants.js";
-import { parseDelimitedText, formatClock, DRAFT_KEY as ASSIST_MARK_DRAFT_KEY, importAttemptRowsToAssistMark } from "./archive-assist-mark.js";
+import { parseDelimitedText, formatClock, parseClockMs, formatSecondsMs, DRAFT_KEY as ASSIST_MARK_DRAFT_KEY, importAttemptRowsToAssistMark } from "./archive-assist-mark.js";
 import { getParticipants } from "./archive-roster.js";
 import manager from "./archive-page-manager.js";
 
@@ -1141,13 +1141,6 @@ class MatchMarkManager {
     this._render();
   }
 
-  _setDateTolerance(days) {
-    this._state.dateToleranceDays = Math.max(0, Number(days) || 0);
-    this._recomputeAllCandidates();
-    this._saveDraft();
-    this._render();
-  }
-
   _resetAll() {
     this._state = createDefaultState();
     this._expanded.clear();
@@ -1195,7 +1188,7 @@ class MatchMarkManager {
               <button class="archive-action-btn" data-match-action="paste">貼上內容</button>
               <button class="archive-action-btn" data-match-action="file">選擇檔案</button>
               <button class="archive-action-btn" data-match-action="refresh-server">重新載入伺服器清單</button>
-              <button class="archive-action-btn${this._hideCompleted ? " is-active" : ""}" data-match-action="toggle-hide-completed" ${hasData ? "" : "disabled"} title="收合／顯示已讀入的列，方便專注在剩下待處理的部分">${this._hideCompleted ? "顯示已完成" : "收合已完成"}</button>
+              <button class="archive-action-btn" data-match-action="toggle-hide-completed" ${hasData ? "" : "disabled"} title="切換只顯示還沒讀入資料的列，方便專注在剩下待處理的部分">${this._hideCompleted ? "顯示全部" : "僅顯示待處理"}</button>
               <button class="archive-action-btn" data-match-action="save-all" ${hasData && !this._savingAll ? "" : "disabled"}>${this._savingAll ? "儲存中…" : "全部儲存"}</button>
               <button class="archive-action-btn archive-action-btn--danger" data-match-action="reset" ${hasData && !this._savingAll ? "" : "disabled"}>清空</button>
             </div>
@@ -1242,10 +1235,6 @@ class MatchMarkManager {
       <span class="match-mark-stat-chip match-mark-stat-chip--ok">已讀入 ${completed}</span>
       <span class="match-mark-stat-chip match-mark-stat-chip--warn">建議重新標記 ${needsRemark}${reopening ? ` · 重新確認中 ${reopening}` : ""}</span>
       <span class="match-mark-stat-chip">已略過 ${skipped}</span>
-      <label class="match-mark-tolerance">
-        日期容忍天數
-        <input type="number" min="0" max="14" id="matchMarkTolerance" value="${this._state.dateToleranceDays}" style="width:48px">
-      </label>
     </div>`;
   }
 
@@ -1271,38 +1260,47 @@ class MatchMarkManager {
     </div>`;
   }
 
-  // 「已完成」單純看這一列有沒有 matchedFilename，不額外存一個狀態去追蹤——
-  // 避免又發生像修這個 bug 之前那樣，兩個值分開存卻忘記同步的問題。
-  // reopenedForRematch 是使用者主動按「重新讀入」時的暫時旗標，讓它先脫離「已完成」。
-  _isRowCompleted(row) {
-    return !!row.matchedFilename && !row.reopenedForRematch;
+  // 已知逐筆內容裡有幾筆缺花費時間；還沒解析過內容（knownAttempts 為 null）不當成「沒問題」，
+  // 但也不當成「有問題」，單純回報 0——避免用還沒讀到的資料誤判。
+  _missingDurationCount(row) {
+    const knownAttempts = this._knownAttemptsFor(row);
+    return knownAttempts ? knownAttempts.filter(a => !a.duration).length : 0;
   }
 
+  // 「已完成」看這一列有沒有 matchedFilename（讀入日誌檔）或 assistDataRows（匯入輔助標記資料），
+  // 不額外存一個狀態去追蹤——避免又發生像修這個 bug 之前那樣，兩個值分開存卻忘記同步的問題。
+  // 兩者都是使用者主動觸發的讀入／匯入動作，等同已經確認過，不需要再另外標「待確認」。
+  // 但如果已知內容裡有缺花費時間的筆數，代表資料還有問題要看，不能算完成——不然被「僅顯示
+  // 待處理」篩掉之後，這種還沒修好的資料就整列消失、沒地方能再看到它。
+  // reopenedForRematch 是使用者主動按「重新讀入」時的暫時旗標，讓它先脫離「已完成」。
+  _isRowCompleted(row) {
+    return (!!row.matchedFilename || !!row.assistDataRows?.length) && !row.reopenedForRematch
+      && this._missingDurationCount(row) === 0;
+  }
+
+  // 隱藏了幾筆「已完成」不用再另外寫一行提示——上面統計列的「已讀入」數字已經是同一個數字，
+  // 兩個地方重複講同一件事沒有必要。
   _renderRows() {
     const st = this._state;
     if (!this._hideCompleted) {
       return st.rows.map((row, idx) => this._renderRow(row, idx)).join("");
     }
-    const hiddenCount = st.rows.filter(row => this._isRowCompleted(row)).length;
-    const hint = hiddenCount
-      ? `<div class="match-mark-hidden-hint">已收合 ${hiddenCount} 筆已完成的列（已讀入），可點上方「收合已完成」按鈕重新顯示。</div>`
-      : "";
-    const rows = st.rows
+    return st.rows
       .map((row, idx) => this._isRowCompleted(row) ? "" : this._renderRow(row, idx))
       .join("");
-    return hint + rows;
   }
 
   _renderRow(row, idx) {
     const expanded = this._expanded.has(idx);
     const loading  = this._loadingCandidates.has(idx);
-    // 「已讀入」直接由 matchedFilename 是否有值決定，不看 decision——
+    // 「已讀入」跟 _isRowCompleted 用同一套判斷（matchedFilename 或 assistDataRows），不看 decision——
     // decision 只用來記另外幾種跟檔案無關的人工標註（待確認／建議重新標記／已略過）。
+    const rowCompleted = this._isRowCompleted(row);
     const decisionLabel = row.reopenedForRematch ? "重新確認中"
-      : row.matchedFilename ? "已讀入"
+      : rowCompleted ? "已讀入"
       : ({ pending: "待確認", "needs-remark": "建議重新標記", skipped: "已略過" }[row.decision] || row.decision);
     const decisionClass = row.reopenedForRematch ? "is-warn"
-      : row.matchedFilename ? "is-ok"
+      : rowCompleted ? "is-ok"
       : ({ pending: "", "needs-remark": "is-warn", skipped: "is-muted" }[row.decision] || "");
 
     const noCandidates = row.candidates.length === 0;
@@ -1316,19 +1314,19 @@ class MatchMarkManager {
       : `${row.candidates.length} 個候選`;
     const candidatesHtml = expanded ? this._renderCandidates(row, idx, loading) : "";
     const assistRows = row.assistDataRows;
+    // 「缺時間」直接標在有問題的那顆膠囊上（顏色＋文字），不再另外用一個彙總數字的徽章——
+    // 彙總數字只能告訴你「有幾筆」，看不出是哪一筆，還要多一步展開才找得到。
     const assistHtml = assistRows?.length ? `<div class="match-mark-row-assist">
       <span class="match-mark-assist-count">輔助標記 ${assistRows.length} 筆</span>
-      ${assistRows.map(a => `<span class="match-mark-assist-item">${a.gestureCommand ? escapeHtml(a.gestureCommand) : ""}${a.type ? " " + escapeHtml(a.type) : ""}${a.typeRaw ? "（" + escapeHtml(a.typeRaw) + "）" : ""}${a.note ? " · " + escapeHtml(a.note) : ""}</span>`).join("")}
+      ${assistRows.map(a => {
+        const missing = !a.duration;
+        const timeText = missing ? "缺時間" : formatSecondsMs(parseClockMs(a.duration));
+        return `<span class="match-mark-assist-item${missing ? " is-warn" : ""}"${missing ? ` title="這筆手勢紀錄沒有花費時間，可能是日誌缺少對應的開始事件（例如直接用日誌時間戳翻譯、但找不到 gesture_step_start），建議確認內容"` : ""}>${a.gestureCommand ? escapeHtml(a.gestureCommand) : ""}${a.type ? " " + escapeHtml(a.type) : ""}${a.typeRaw ? "（" + escapeHtml(a.typeRaw) + "）" : ""}${a.note ? " · " + escapeHtml(a.note) : ""} · <span class="match-mark-assist-time">${timeText}</span></span>`;
+      }).join("")}
     </div>` : "";
     const saveHtml = row.saveConflict ? `<div class="match-mark-row-actions match-mark-row-actions--save">
       ${this._renderConflictPanel(row, idx)}
     </div>` : "";
-
-    // 「缺時間」提示：只在已經知道逐筆內容時才判斷（人工輔助標記、或存檔後從日誌翻譯出來的快取），
-    // 避免還沒讀取內容時被誤判成「沒問題」。
-    const knownAttempts = this._knownAttemptsFor(row);
-    const missingDurationCount = knownAttempts ? knownAttempts.filter(a => !a.duration).length : 0;
-    const missingDurationHtml = missingDurationCount > 0 ? `<span class="match-mark-decision-badge is-warn" title="這幾筆手勢紀錄沒有花費時間，可能是日誌缺少對應的開始事件（例如直接用日誌時間戳翻譯、但找不到 gesture_step_start），建議展開確認內容">缺時間 ${missingDurationCount}/${knownAttempts.length}</span>` : "";
 
     return `<div class="match-mark-row${expanded ? " is-expanded" : ""}" data-row-idx="${idx}" data-match-drop="${idx}" title="找不到自動比對出來的候選檔時，可以把電腦裡的 .jsonl 直接拖曳到這張卡片上指定給這個人">
       <div class="match-mark-row-head" data-match-toggle="${idx}">
@@ -1336,7 +1334,6 @@ class MatchMarkManager {
         <span class="match-mark-row-meta">${row.date ? escapeHtml(row.date) : "—"}${row.groupLabel ? " · 代碼 " + escapeHtml(row.idRaw) : ""}${!row.groupLabel && row.participantName ? " · 受試者 " + escapeHtml(String(row.trackingId ?? "")) : ""}${row.combo ? " · " + escapeHtml(row.combo) : ""}${row.count != null ? ` · 預期 ${row.count} 次` : ""}${row.matchedFilename ? ` · 已讀入 <span class="match-mark-matched-link" data-match-edit-matched="${idx}" title="在檢視分頁開啟這個日誌檔的「重新標記」編輯模式，確認內容有沒有異常；沒異常就直接關掉分頁即可，原檔案不受影響">${escapeHtml(row.matchedFilename)}</span>` : ""}</span>
         <span class="match-mark-row-cand-count">${row.stage === "1" && noCandidates ? "階段一無日誌檔（正常）" : candCountLabel}</span>
         <span class="match-mark-decision-badge ${decisionClass}">${decisionLabel}</span>
-        ${missingDurationHtml}
         ${row.matchedFilename ? `<button class="archive-action-btn archive-action-btn--sm" data-match-reopen="${idx}" title="發現剛剛編輯後另存的異常修正檔，重新整理候選清單並預選最新的檔案，方便重新讀入">重新讀入</button>` : ""}
         ${row.trackingId != null && row.stage ? `<button class="archive-action-btn archive-action-btn--sm archive-action-btn--danger" data-match-clear-saved="${idx}" title="刪除伺服器上這位受試者・這個階段已存的分析資料">清除已儲存資料</button>` : ""}
         <span class="match-mark-row-caret">${expanded ? "▾" : "▸"}</span>
@@ -1551,7 +1548,6 @@ class MatchMarkManager {
       this._importFile(file);
     });
 
-    c.querySelector("#matchMarkTolerance")?.addEventListener("change", e => this._setDateTolerance(e.target.value));
     c.querySelector("#matchMarkIdRule")?.addEventListener("change", e => this._setIdSplitRule(e.target.value));
     c.querySelectorAll("[data-match-col]").forEach(sel =>
       sel.addEventListener("change", e => this._setColumnRole(Number(sel.dataset.matchCol), e.target.value)));

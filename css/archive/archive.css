@@ -563,15 +563,6 @@ body.archive-page {
   margin-bottom: 8px;
 }
 
-.match-mark-tolerance {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: #5b5f80;
-}
-
 .assist-mark-header-mode {
   display: flex;
   align-items: center;
@@ -748,6 +739,16 @@ body.archive-page {
   background: #f0f1fa;
   border-radius: 4px;
   padding: 2px 6px;
+}
+
+.match-mark-assist-item.is-warn {
+  background: #fdecd8;
+  color: #b8590a;
+}
+
+.match-mark-assist-time {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
 }
 
 .match-mark-row-body {

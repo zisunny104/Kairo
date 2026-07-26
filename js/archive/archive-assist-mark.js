@@ -30,6 +30,15 @@ export function formatClock(ms) {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${String(msPart).padStart(3, "0")}`;
 }
 
+// 手勢通常只花幾秒，最終資料的時間欄不需要 HH:MM:SS 那麼長的格式，只顯示秒.毫秒即可。
+export function formatSecondsMs(ms) {
+  if (ms == null) return "";
+  const totalMs = Math.max(0, Math.floor(ms));
+  const s = Math.floor(totalMs / 1000);
+  const msPart = totalMs % 1000;
+  return `${s}.${String(msPart).padStart(3, "0")}`;
+}
+
 // formatClock 的反向函式，把 "HH:MM:SS.mmm" 轉回毫秒；格式不符回傳 null。
 export function parseClockMs(str) {
   const m = /^(\d+):(\d{2}):(\d{2})\.(\d{3})$/.exec(String(str || "").trim());

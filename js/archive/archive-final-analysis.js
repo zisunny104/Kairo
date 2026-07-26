@@ -13,6 +13,7 @@ import {
 } from "./archive-constants.js";
 import { getParticipants, getParticipantNameMap } from "./archive-roster.js";
 import { GestureAgreementCard, ErrorRateComparisonCard, ReactionTimeCard } from "./archive-final-analysis-cards.js";
+import { parseClockMs, formatSecondsMs } from "./archive-assist-mark.js";
 
 const ACTIONS_COLLAPSED_KEY = "archive_final_analysis_actions_collapsed_v1";
 const STAGE_LABELS = { "1": "第一階段", "2-1": "第二階段（第一次）", "2-2": "第二階段（第二次）" };
@@ -79,7 +80,7 @@ class FinalAnalysisManager {
       const name = nameMap.get(r.trackingId) || "";
       r.attempts.forEach(a => {
         idx += 1;
-        rows.push([idx, r.trackingId, r.experimentId, name, a.gestureCommand || "", a.type || "", a.typeRaw || "", a.note || "", a.duration || ""]);
+        rows.push([idx, r.trackingId, r.experimentId, name, a.gestureCommand || "", a.type || "", a.typeRaw || "", a.note || "", formatSecondsMs(parseClockMs(a.duration))]);
       });
     }
     return { rows, count: withAttempts.length };
