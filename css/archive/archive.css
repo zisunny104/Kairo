@@ -5004,6 +5004,12 @@ body.archive-page {
   padding-top: 0;
 }
 
+/* .final-analysis-datatable 的 height:100% 是為了最終分析分頁（父層有固定高度的可捲動卡片）設計的；
+   問卷分析卡片的 .qnr-block 沒有固定高度，height:100% 會被壓成比實際內容矮，造成文字溢出疊到下一區塊 */
+.qnr-block .final-analysis-datatable {
+  height: auto;
+}
+
 .qnr-caption {
   font-weight: 700;
   color: #333;
